@@ -262,9 +262,13 @@ public class LongQueryableExpressionTests extends ESTestCase {
 
     private void checkApproximations(IndexSearcher searcher, LongQueryableExpression expression, long result) throws IOException {
         assertCount(searcher, expression.approximateTermQuery(result), 1);
+        assertCount(searcher, expression.approximateNullSafeTermQuery(result), 1);
         assertCount(searcher, expression.approximateRangeQuery(Long.MIN_VALUE, Long.MAX_VALUE), 1);
+        assertCount(searcher, expression.approximateNullSafeRangeQuery(Long.MIN_VALUE, Long.MAX_VALUE), 1);
         assertCount(searcher, expression.approximateRangeQuery(randomLongBetween(Long.MIN_VALUE, result), result), 1);
+        assertCount(searcher, expression.approximateNullSafeRangeQuery(randomLongBetween(Long.MIN_VALUE, result), result), 1);
         assertCount(searcher, expression.approximateRangeQuery(result, randomLongBetween(result, Long.MAX_VALUE)), 1);
+        assertCount(searcher, expression.approximateNullSafeRangeQuery(result, randomLongBetween(result, Long.MAX_VALUE)), 1);
     }
 
     private void checkPerfectApproximation(IndexSearcher searcher, LongQueryableExpression expression, long result) throws IOException {
@@ -273,11 +277,17 @@ public class LongQueryableExpressionTests extends ESTestCase {
             expression.approximateTermQuery(randomValueOtherThan(result, LongQueryableExpressionTests::randomInterestingLong)),
             0
         );
+        assertCount(
+            searcher,
+            expression.approximateNullSafeTermQuery(randomValueOtherThan(result, LongQueryableExpressionTests::randomInterestingLong)),
+            0
+        );
         Tuple<Long, Long> bounds = randomValueOtherThanMany(
             p -> p.v1() <= result && result <= p.v2(),
             LongQueryableExpressionTests::randomBounds
         );
         assertCount(searcher, expression.approximateRangeQuery(bounds.v1(), bounds.v2()), 0);
+        assertCount(searcher, expression.approximateNullSafeRangeQuery(bounds.v1(), bounds.v2()), 0);
     }
 
     private void assertCount(IndexSearcher searcher, Query query, int count) throws IOException {

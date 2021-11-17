@@ -8,8 +8,12 @@
 
 package org.elasticsearch.queryableexpression;
 
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.NormsFieldExistsQuery;
 import org.apache.lucene.search.Query;
 
+import java.util.List;
 import java.util.function.LongFunction;
 
 /**
@@ -51,4 +55,26 @@ public interface LongQueryableExpression extends QueryableExpression {
      * if there isn't a way to query.
      */
     QueryableExpression mapConstant(LongFunction<QueryableExpression> map);
+
+    List<String> expectedFields();
+
+    default Query approximateNullSafeTermQuery(long term) {
+        return nullSafe(approximateTermQuery(term));
+    }
+
+    default Query approximateNullSafeRangeQuery(long lower, long upper) {
+        return nullSafe(approximateRangeQuery(lower, upper));
+    }
+
+    private Query nullSafe(Query query) {
+        List<String> fields = expectedFields();
+        BooleanQuery.Builder fieldsQueryBuilder = new BooleanQuery.Builder();
+        for (String field : fields) {
+            fieldsQueryBuilder.add(new NormsFieldExistsQuery(field), BooleanClause.Occur.MUST_NOT);
+        }
+
+        return new BooleanQuery.Builder().add(query, BooleanClause.Occur.SHOULD)
+            .add(fieldsQueryBuilder.build(), BooleanClause.Occur.SHOULD)
+            .build();
+    }
 }

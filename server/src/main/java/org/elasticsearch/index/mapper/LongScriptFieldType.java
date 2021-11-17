@@ -158,7 +158,7 @@ public final class LongScriptFieldType extends AbstractScriptFieldType<LongField
                 return new MatchNoDocsQuery(l + " > " + u);
             }
             Query approximation = approximateFirst
-                ? queryableExpression(context).castToLong().approximateRangeQuery(l, u)
+                ? queryableExpression(context).castToLong().approximateNullSafeRangeQuery(l, u)
                 : new MatchAllDocsQuery();
             return new LongScriptFieldRangeQuery(script, name(), approximation, leafFactory(context)::newInstance, l, u);
         });
@@ -172,7 +172,7 @@ public final class LongScriptFieldType extends AbstractScriptFieldType<LongField
         applyScriptContext(context);
         long v = NumberType.objectToLong(value, true);
         Query approximation = approximateFirst
-            ? queryableExpression(context).castToLong().approximateTermQuery(v)
+            ? queryableExpression(context).castToLong().approximateNullSafeTermQuery(v)
             : new MatchAllDocsQuery();
         return new LongScriptFieldTermQuery(script, name(), approximation, leafFactory(context)::newInstance, v);
     }
