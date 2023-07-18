@@ -739,7 +739,7 @@ public class MetadataIndexTemplateService {
         ComposableIndexTemplate template
     ) {
         boolean hasLifecycle = (template.template() != null && template.template().lifecycle() != null)
-            || resolveLifecycle(template, metadata.componentTemplates()) != null;
+            || resolveLifecycle(template, metadata.componentTemplates()).enabledValue() != null;
         if (hasLifecycle && template.getDataStreamTemplate() == null) {
             throw new IllegalArgumentException(
                 "index template ["
@@ -1511,10 +1511,8 @@ public class MetadataIndexTemplateService {
     public static DataStreamLifecycle composeDataLifecycles(List<DataStreamLifecycle> lifecycles) {
         DataStreamLifecycle.Builder builder = null;
         for (DataStreamLifecycle current : lifecycles) {
-            if (current == Template.NO_LIFECYCLE) {
-                builder = null;
-            } else if (builder == null) {
-                builder = DataStreamLifecycle.newBuilder(current);
+            if (builder == null) {
+                builder = DataStreamLifecycle.newBuilder(current).enabled(true);
             } else {
                 if (current.getDataRetention() != null) {
                     builder.dataRetention(current.getDataRetention());

@@ -155,8 +155,24 @@ public class DataStreamLifecycle implements SimpleDiffable<DataStreamLifecycle>,
      *  - false, if they explicitly disabled it
      *  - null, otherwise
      */
-    Boolean enabled() {
+    Boolean enabledValue() {
         return enabled;
+    }
+
+    /**
+     * Returns true if the user specifically asked for this data stream to be managed by
+     * the data stream lifecycle.
+     */
+    boolean isUserEnabled() {
+        return enabled != null && enabled;
+    }
+
+    /**
+     * Returns true if the user specifically asked for this data stream to not be managed by
+     * the data stream lifecycle.
+     */
+    boolean isOptOut() {
+        return enabled != null && enabled == false;
     }
 
     @Override
