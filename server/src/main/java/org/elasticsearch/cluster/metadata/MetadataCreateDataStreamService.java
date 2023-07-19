@@ -267,9 +267,6 @@ public class MetadataCreateDataStreamService {
         DataStreamLifecycle lifecycle = isSystem
             ? MetadataIndexTemplateService.resolveLifecycle(template, systemDataStreamDescriptor.getComponentTemplates())
             : MetadataIndexTemplateService.resolveLifecycle(template, metadata.componentTemplates());
-        if (lifecycle == null && template.getDataStreamTemplate() != null) {
-            lifecycle = new DataStreamLifecycle();
-        }
         DataStream newDataStream = new DataStream(
             dataStreamName,
             dsBackingIndices,
@@ -280,7 +277,7 @@ public class MetadataCreateDataStreamService {
             isSystem,
             template.getDataStreamTemplate().isAllowCustomRouting(),
             indexMode,
-            lifecycle
+            lifecycle == null ? new DataStreamLifecycle() : lifecycle
         );
         Metadata.Builder builder = Metadata.builder(currentState.metadata()).put(newDataStream);
 

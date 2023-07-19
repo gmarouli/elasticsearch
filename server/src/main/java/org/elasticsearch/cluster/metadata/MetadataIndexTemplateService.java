@@ -739,7 +739,7 @@ public class MetadataIndexTemplateService {
         ComposableIndexTemplate template
     ) {
         boolean hasLifecycle = (template.template() != null && template.template().lifecycle() != null)
-            || resolveLifecycle(template, metadata.componentTemplates()).enabledValue() != null;
+            || resolveLifecycle(template, metadata.componentTemplates()) != null;
         if (hasLifecycle && template.getDataStreamTemplate() == null) {
             throw new IllegalArgumentException(
                 "index template ["

@@ -65,7 +65,7 @@ public class DataStreamLifecycle implements SimpleDiffable<DataStreamLifecycle>,
     public static final ConstructingObjectParser<DataStreamLifecycle, Void> PARSER = new ConstructingObjectParser<>(
         "lifecycle",
         false,
-        (args, unused) -> new DataStreamLifecycle((Retention) args[0], (Downsampling) args[1], (Boolean) args[2])
+        (args, unused) -> new DataStreamLifecycle((Retention) args[0], (Downsampling) args[1], (boolean) args[2])
     );
 
     static {
@@ -84,7 +84,7 @@ public class DataStreamLifecycle implements SimpleDiffable<DataStreamLifecycle>,
                 return new Downsampling(AbstractObjectParser.parseArray(p, c, Downsampling.Round::fromXContent));
             }
         }, DOWNSAMPLING_FIELD, ObjectParser.ValueType.OBJECT_ARRAY_OR_NULL);
-        PARSER.declareBoolean(ConstructingObjectParser.optionalConstructorArg(), ENABLED_FIELD);
+        PARSER.declareBoolean(ConstructingObjectParser.constructorArg(), ENABLED_FIELD);
     }
 
     public static boolean isEnabled() {
@@ -96,13 +96,13 @@ public class DataStreamLifecycle implements SimpleDiffable<DataStreamLifecycle>,
     @Nullable
     private final Downsampling downsampling;
     @Nullable
-    private final Boolean enabled;
+    private final boolean enabled;
 
     public DataStreamLifecycle() {
-        this(null, null, null);
+        this(null, null, true);
     }
 
-    public DataStreamLifecycle(@Nullable Retention dataRetention, @Nullable Downsampling downsampling, @Nullable Boolean enabled) {
+    public DataStreamLifecycle(@Nullable Retention dataRetention, @Nullable Downsampling downsampling, boolean enabled) {
         this.dataRetention = dataRetention;
         this.downsampling = downsampling;
         this.enabled = enabled;
@@ -149,30 +149,8 @@ public class DataStreamLifecycle implements SimpleDiffable<DataStreamLifecycle>,
         return downsampling;
     }
 
-    /**
-     * Returns:
-     *  - true, if the user explicitly enabled this lifecycle
-     *  - false, if they explicitly disabled it
-     *  - null, otherwise
-     */
-    Boolean enabledValue() {
+    boolean enabled() {
         return enabled;
-    }
-
-    /**
-     * Returns true if the user specifically asked for this data stream to be managed by
-     * the data stream lifecycle.
-     */
-    boolean isUserEnabled() {
-        return enabled != null && enabled;
-    }
-
-    /**
-     * Returns true if the user specifically asked for this data stream to not be managed by
-     * the data stream lifecycle.
-     */
-    boolean isOptOut() {
-        return enabled != null && enabled == false;
     }
 
     @Override
@@ -200,7 +178,7 @@ public class DataStreamLifecycle implements SimpleDiffable<DataStreamLifecycle>,
             out.writeOptionalWriteable(downsampling);
         }
         if (out.getTransportVersion().onOrAfter(TransportVersion.V_8_500_037)) {
-            out.writeOptionalBoolean(enabled);
+            out.writeBoolean(enabled);
         }
     }
 
@@ -216,7 +194,7 @@ public class DataStreamLifecycle implements SimpleDiffable<DataStreamLifecycle>,
             downsampling = null;
         }
         if (in.getTransportVersion().onOrAfter(TransportVersion.V_8_500_037)) {
-            enabled = in.readOptionalBoolean();
+            enabled = in.readBoolean();
         } else {
             // if a lifecycle exists in a previous version it represents an explicitly added lifecycle
             enabled = true;
@@ -243,6 +221,7 @@ public class DataStreamLifecycle implements SimpleDiffable<DataStreamLifecycle>,
     public XContentBuilder toXContent(XContentBuilder builder, Params params, @Nullable RolloverConfiguration rolloverConfiguration)
         throws IOException {
         builder.startObject();
+        builder.field(ENABLED_FIELD.getPreferredName(), enabled);
         if (dataRetention != null) {
             if (dataRetention.value() == null) {
                 builder.nullField(DATA_RETENTION_FIELD.getPreferredName());
@@ -253,9 +232,6 @@ public class DataStreamLifecycle implements SimpleDiffable<DataStreamLifecycle>,
         if (downsampling != null) {
             builder.field(DOWNSAMPLING_FIELD.getPreferredName());
             downsampling.toXContent(builder, params);
-        }
-        if (enabled != null) {
-            builder.field(ENABLED_FIELD.getPreferredName(), enabled);
         }
         if (rolloverConfiguration != null) {
             builder.field(ROLLOVER_FIELD.getPreferredName());
@@ -285,8 +261,8 @@ public class DataStreamLifecycle implements SimpleDiffable<DataStreamLifecycle>,
         private Retention dataRetention = null;
         @Nullable
         private Downsampling downsampling = null;
-        @Nullable
-        private Boolean enabled = null;
+        // default value is that the lifecycle is enabled
+        private boolean enabled = true;
 
         public Builder dataRetention(@Nullable Retention value) {
             dataRetention = value;
@@ -308,7 +284,7 @@ public class DataStreamLifecycle implements SimpleDiffable<DataStreamLifecycle>,
             return this;
         }
 
-        public Builder enabled(@Nullable Boolean value) {
+        public Builder enabled(boolean value) {
             enabled = value;
             return this;
         }
