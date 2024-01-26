@@ -9,6 +9,7 @@
 package org.elasticsearch.action.support;
 
 import org.elasticsearch.action.support.IndicesOptions.ConcreteTargetOptions;
+import org.elasticsearch.action.support.IndicesOptions.FailureStoreOptions;
 import org.elasticsearch.action.support.IndicesOptions.GeneralOptions;
 import org.elasticsearch.action.support.IndicesOptions.WildcardOptions;
 import org.elasticsearch.common.bytes.BytesReference;
@@ -41,17 +42,7 @@ public class IndicesOptionsTests extends ESTestCase {
     public void testSerialization() throws Exception {
         int iterations = randomIntBetween(5, 20);
         for (int i = 0; i < iterations; i++) {
-            IndicesOptions indicesOptions = IndicesOptions.fromOptions(
-                randomBoolean(),
-                randomBoolean(),
-                randomBoolean(),
-                randomBoolean(),
-                randomBoolean(),
-                randomBoolean(),
-                randomBoolean(),
-                randomBoolean(),
-                randomBoolean()
-            );
+            IndicesOptions indicesOptions = randomIndicesOptions();
 
             BytesStreamOutput output = new BytesStreamOutput();
             indicesOptions.writeIndicesOptions(output);
@@ -70,6 +61,20 @@ public class IndicesOptionsTests extends ESTestCase {
 
             assertEquals(indicesOptions2.ignoreAliases(), indicesOptions.ignoreAliases());
         }
+    }
+
+    public static IndicesOptions randomIndicesOptions() {
+        return IndicesOptions.fromOptions(
+            randomBoolean(),
+            randomBoolean(),
+            randomBoolean(),
+            randomBoolean(),
+            randomBoolean(),
+            randomBoolean(),
+            randomBoolean(),
+            randomBoolean(),
+            randomBoolean()
+        );
     }
 
     public void testFromOptions() {
@@ -113,17 +118,7 @@ public class IndicesOptionsTests extends ESTestCase {
         boolean expandToOpenIndices = randomBoolean();
         boolean expandToClosedIndices = randomBoolean();
 
-        IndicesOptions defaultOptions = IndicesOptions.fromOptions(
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean()
-        );
+        IndicesOptions defaultOptions = randomIndicesOptions();
 
         IndicesOptions indicesOptions = IndicesOptions.fromOptions(
             ignoreUnavailable,
@@ -176,17 +171,7 @@ public class IndicesOptionsTests extends ESTestCase {
         boolean allowNoIndices = randomBoolean();
         String allowNoIndicesString = Boolean.toString(allowNoIndices);
 
-        IndicesOptions defaultOptions = IndicesOptions.fromOptions(
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean()
-        );
+        IndicesOptions defaultOptions = randomIndicesOptions();
 
         IndicesOptions updatedOptions = IndicesOptions.fromParameters(
             expandWildcardsString,
@@ -207,17 +192,7 @@ public class IndicesOptionsTests extends ESTestCase {
     }
 
     public void testEqualityAndHashCode() {
-        IndicesOptions indicesOptions = IndicesOptions.fromOptions(
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean(),
-            randomBoolean()
-        );
+        IndicesOptions indicesOptions = randomIndicesOptions();
 
         EqualsHashCodeTestUtils.checkEqualsAndHashCode(
             indicesOptions,
@@ -345,8 +320,8 @@ public class IndicesOptionsTests extends ESTestCase {
             randomBoolean()
         );
         GeneralOptions generalOptions = new GeneralOptions(randomBoolean(), randomBoolean(), randomBoolean());
-
-        IndicesOptions indicesOptions = new IndicesOptions(concreteTargetOptions, wildcardOptions, generalOptions);
+        FailureStoreOptions failureStoreOptions = new FailureStoreOptions(randomBoolean(), randomBoolean());
+        IndicesOptions indicesOptions = new IndicesOptions(concreteTargetOptions, wildcardOptions, generalOptions, failureStoreOptions);
 
         XContentType type = randomFrom(XContentType.values());
         BytesReference xContentBytes = toXContentBytes(indicesOptions, type);

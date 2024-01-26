@@ -90,6 +90,10 @@ public final class DataStreamTestHelper {
         return newInstance(name, indices, indices.size(), null);
     }
 
+    public static DataStream newInstance(String name, List<Index> indices, List<Index> failureIndices) {
+        return newInstance(name, indices, indices.size(), null, false, null, failureIndices);
+    }
+
     public static DataStream newInstance(String name, List<Index> indices, long generation, Map<String, Object> metadata) {
         return newInstance(name, indices, generation, metadata, false);
     }
@@ -124,7 +128,20 @@ public final class DataStreamTestHelper {
         @Nullable DataStreamLifecycle lifecycle,
         List<Index> failureStores
     ) {
-        return new DataStream(name, indices, generation, metadata, false, replicated, false, false, null, lifecycle, false, failureStores);
+        return new DataStream(
+            name,
+            indices,
+            generation,
+            metadata,
+            false,
+            replicated,
+            false,
+            false,
+            null,
+            lifecycle,
+            failureStores.isEmpty() == false,
+            failureStores
+        );
     }
 
     public static String getLegacyDefaultBackingIndexName(
@@ -164,6 +181,13 @@ public final class DataStreamTestHelper {
 
     public static IndexMetadata.Builder createBackingIndex(String dataStreamName, int generation, long epochMillis) {
         return IndexMetadata.builder(DataStream.getDefaultBackingIndexName(dataStreamName, generation, epochMillis))
+            .settings(SETTINGS)
+            .numberOfShards(NUMBER_OF_SHARDS)
+            .numberOfReplicas(NUMBER_OF_REPLICAS);
+    }
+
+    public static IndexMetadata.Builder createFailureIndex(String dataStreamName, int generation, long epochMillis) {
+        return IndexMetadata.builder(DataStream.getDefaultFailureStoreName(dataStreamName, generation, epochMillis))
             .settings(SETTINGS)
             .numberOfShards(NUMBER_OF_SHARDS)
             .numberOfReplicas(NUMBER_OF_REPLICAS);

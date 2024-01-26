@@ -78,7 +78,13 @@ public class RestIndicesAction extends AbstractCatAction {
     @Override
     public RestChannelConsumer doCatRequest(final RestRequest request, final NodeClient client) {
         final String[] indices = Strings.splitStringByCommaToArray(request.param("index"));
-        final IndicesOptions indicesOptions = IndicesOptions.fromRequest(request, IndicesOptions.strictExpand());
+        final IndicesOptions.FailureStoreOptions failureStoreOptions = IndicesOptions.FailureStoreOptions.fromRequest(
+            request,
+            IndicesOptions.FailureStoreOptions.newBuilder().includeFailureIndices(true).build()
+        );
+        final IndicesOptions indicesOptions = IndicesOptions.newBuilder(IndicesOptions.fromRequest(request, IndicesOptions.strictExpand()))
+            .failureStoreOptions(failureStoreOptions)
+            .build();
         final TimeValue masterNodeTimeout = request.paramAsTime("master_timeout", DEFAULT_MASTER_NODE_TIMEOUT);
         final boolean includeUnloadedSegments = request.paramAsBoolean("include_unloaded_segments", false);
 
@@ -121,9 +127,11 @@ public class RestIndicesAction extends AbstractCatAction {
                     .execute(listeners.acquire(indexSettingsRef::set));
 
                 // The other requests just provide additional detail, and wildcards may be resolved differently depending on the type of
-                // request in the presence of security plugins, so set the IndicesOptions for all the sub-requests to be as inclusive as
-                // possible.
-                final IndicesOptions subRequestIndicesOptions = IndicesOptions.lenientExpandHidden();
+                // request in the presence of security plugins, so set the IndicesOptions and DataStreamOptions for all the sub-requests
+                // to be as inclusive as possible.
+                final IndicesOptions subRequestIndicesOptions = IndicesOptions.newBuilder(IndicesOptions.lenientExpandHidden())
+                    .failureStoreOptions(failureStoreOptions)
+                    .build();
 
                 client.admin()
                     .cluster()

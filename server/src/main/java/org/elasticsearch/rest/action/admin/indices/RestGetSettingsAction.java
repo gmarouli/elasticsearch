@@ -11,6 +11,7 @@ package org.elasticsearch.rest.action.admin.indices;
 import org.elasticsearch.action.admin.indices.settings.get.GetSettingsRequest;
 import org.elasticsearch.action.support.IndicesOptions;
 import org.elasticsearch.client.internal.node.NodeClient;
+import org.elasticsearch.cluster.metadata.DataStream;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.rest.BaseRestHandler;
@@ -56,6 +57,15 @@ public class RestGetSettingsAction extends BaseRestHandler {
             .names(names);
         getSettingsRequest.local(request.paramAsBoolean("local", getSettingsRequest.local()));
         getSettingsRequest.masterNodeTimeout(request.paramAsTime("master_timeout", getSettingsRequest.masterNodeTimeout()));
+        if (DataStream.isFailureStoreEnabled()) {
+            IndicesOptions.FailureStoreOptions failureStoreOptions = IndicesOptions.FailureStoreOptions.fromRequest(
+                request,
+                getSettingsRequest.indicesOptions().failureStoreOptions()
+            );
+            getSettingsRequest.indicesOptions(
+                IndicesOptions.newBuilder(getSettingsRequest.indicesOptions()).failureStoreOptions(failureStoreOptions).build()
+            );
+        }
         return channel -> client.admin().indices().getSettings(getSettingsRequest, new RestRefCountedChunkedToXContentListener<>(channel));
     }
 }
