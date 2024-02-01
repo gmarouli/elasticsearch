@@ -29,6 +29,7 @@ import org.elasticsearch.health.HealthStatus;
 import org.elasticsearch.health.metadata.HealthMetadata;
 import org.elasticsearch.health.node.LocalHealthMonitor.HealthCheckWithRef;
 import org.elasticsearch.health.node.check.HealthCheck;
+import org.elasticsearch.health.node.check.HealthTracker;
 import org.elasticsearch.health.node.selection.HealthNodeExecutorTests;
 import org.elasticsearch.test.ESTestCase;
 import org.elasticsearch.threadpool.TestThreadPool;
@@ -57,7 +58,7 @@ public class LocalHealthMonitorTests extends ESTestCase {
     private HealthMetadata healthMetadata;
     private ClusterState clusterState;
     private Client client;
-    private MockHealthCheck mockHealthCheck;
+    private MockHealthTracker mockHealthCheck;
     private HealthCheckWithRef<DiskHealthInfo> mockHealthCheckWithRef;
     private LocalHealthMonitor localHealthMonitor;
 
@@ -116,7 +117,7 @@ public class LocalHealthMonitorTests extends ESTestCase {
 
         FeatureService featureService = new FeatureService(List.of(new HealthFeatures()));
 
-        mockHealthCheck = new MockHealthCheck();
+        mockHealthCheck = new MockHealthTracker();
 
         localHealthMonitor = LocalHealthMonitor.create(
             Settings.EMPTY,
@@ -248,17 +249,33 @@ public class LocalHealthMonitorTests extends ESTestCase {
         return mockHealthCheckWithRef.reference().get();
     }
 
-    private static class MockHealthCheck implements HealthCheck<DiskHealthInfo> {
+    private static class MockHealthTracker implements HealthTracker<DiskHealthInfo> {
         private DiskHealthInfo healthInfo = GREEN;
 
         @Override
-        public DiskHealthInfo getHealth() {
+        public DiskHealthInfo checkCurrentHealth() {
             return healthInfo;
         }
 
         @Override
-        public void addHealthToBuilder(UpdateHealthInfoCacheAction.Request.Builder builder, DiskHealthInfo healthInfo) {
+        public DiskHealthInfo getLastReportedHealth() {
+            // TODO
+            return null;
+        }
+
+        @Override
+        public boolean updateLastReportedHealth(DiskHealthInfo previous, DiskHealthInfo current) {
+            return false;
+        }
+
+        @Override
+        public void addToRequestBuilder(UpdateHealthInfoCacheAction.Request.Builder builder, DiskHealthInfo healthInfo) {
             builder.diskHealthInfo(healthInfo);
+        }
+
+        @Override
+        public void reset() {
+            // TODO
         }
 
         public void setHealthInfo(DiskHealthInfo healthInfo) {

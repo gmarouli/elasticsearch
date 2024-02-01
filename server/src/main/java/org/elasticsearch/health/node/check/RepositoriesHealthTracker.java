@@ -15,19 +15,21 @@ import org.elasticsearch.repositories.RepositoriesService;
 import org.elasticsearch.repositories.UnknownTypeRepository;
 
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Determines the health of repositories on this node.
  */
-public class RepositoriesCheck implements HealthCheck<RepositoriesHealthInfo> {
+public class RepositoriesHealthTracker implements HealthTracker<RepositoriesHealthInfo> {
     private final RepositoriesService repositoriesService;
+    private final AtomicReference<RepositoriesHealthInfo> lastReportedValue = new AtomicReference<>();
 
-    public RepositoriesCheck(RepositoriesService repositoriesService) {
+    public RepositoriesHealthTracker(RepositoriesService repositoriesService) {
         this.repositoriesService = repositoriesService;
     }
 
     @Override
-    public RepositoriesHealthInfo getHealth() {
+    public RepositoriesHealthInfo checkCurrentHealth() {
         var unknown = new ArrayList<String>();
         var invalid = new ArrayList<String>();
         repositoriesService.getRepositories().forEach((name, repository) -> {
@@ -41,7 +43,22 @@ public class RepositoriesCheck implements HealthCheck<RepositoriesHealthInfo> {
     }
 
     @Override
-    public void addHealthToBuilder(UpdateHealthInfoCacheAction.Request.Builder builder, RepositoriesHealthInfo healthInfo) {
+    public void addToRequestBuilder(UpdateHealthInfoCacheAction.Request.Builder builder, RepositoriesHealthInfo healthInfo) {
         builder.repositoriesHealthInfo(healthInfo);
+    }
+
+    @Override
+    public RepositoriesHealthInfo getLastReportedHealth() {
+        return lastReportedValue.get();
+    }
+
+    @Override
+    public boolean updateLastReportedHealth(RepositoriesHealthInfo previous, RepositoriesHealthInfo current) {
+        return lastReportedValue.compareAndSet(previous, current);
+    }
+
+    @Override
+    public void reset() {
+        lastReportedValue.set(null);
     }
 }

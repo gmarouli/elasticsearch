@@ -27,23 +27,25 @@ import org.elasticsearch.health.node.UpdateHealthInfoCacheAction;
 import org.elasticsearch.node.NodeService;
 
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Determines the disk health of this node by checking if it exceeds the thresholds defined in the health metadata.
  */
-public class DiskCheck implements HealthCheck<DiskHealthInfo> {
-    private static final Logger logger = LogManager.getLogger(DiskCheck.class);
-
+public class DiskHealthTracker implements HealthTracker<DiskHealthInfo> {
+    private static final Logger logger = LogManager.getLogger(DiskHealthTracker.class);
     private final NodeService nodeService;
     private final ClusterService clusterService;
 
-    public DiskCheck(NodeService nodeService, ClusterService clusterService) {
+    private final AtomicReference<DiskHealthInfo> lastReportedValue = new AtomicReference<>();
+
+    public DiskHealthTracker(NodeService nodeService, ClusterService clusterService) {
         this.nodeService = nodeService;
         this.clusterService = clusterService;
     }
 
     @Override
-    public DiskHealthInfo getHealth() {
+    public DiskHealthInfo checkCurrentHealth() {
         var clusterState = clusterService.state();
         var healthMetadata = HealthMetadata.getFromClusterState(clusterState);
         DiscoveryNode node = clusterState.getNodes().getLocalNode();
@@ -73,7 +75,7 @@ public class DiskCheck implements HealthCheck<DiskHealthInfo> {
         if (usage.freeBytes() < highThreshold) {
             if (node.canContainData()) {
                 // for data nodes only report YELLOW if shards can't move away from the node
-                if (DiskCheck.hasRelocatingShards(clusterState, node) == false) {
+                if (DiskHealthTracker.hasRelocatingShards(clusterState, node) == false) {
                     logger.debug("High disk watermark [{}] exceeded on {}", highThreshold, usage);
                     return new DiskHealthInfo(HealthStatus.YELLOW, DiskHealthInfo.Cause.NODE_OVER_HIGH_THRESHOLD);
                 }
@@ -87,8 +89,23 @@ public class DiskCheck implements HealthCheck<DiskHealthInfo> {
     }
 
     @Override
-    public void addHealthToBuilder(UpdateHealthInfoCacheAction.Request.Builder builder, DiskHealthInfo healthInfo) {
+    public DiskHealthInfo getLastReportedHealth() {
+        return lastReportedValue.get();
+    }
+
+    @Override
+    public boolean updateLastReportedHealth(DiskHealthInfo previous, DiskHealthInfo current) {
+        return lastReportedValue.compareAndSet(previous, current);
+    }
+
+    @Override
+    public void addToRequestBuilder(UpdateHealthInfoCacheAction.Request.Builder builder, DiskHealthInfo healthInfo) {
         builder.diskHealthInfo(healthInfo);
+    }
+
+    @Override
+    public void reset() {
+        lastReportedValue.set(null);
     }
 
     private static boolean isDedicatedSearchNode(DiscoveryNode node) {
