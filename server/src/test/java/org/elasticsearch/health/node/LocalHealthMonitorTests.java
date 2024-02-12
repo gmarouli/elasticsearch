@@ -22,6 +22,7 @@ import org.elasticsearch.common.settings.ClusterSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.unit.RelativeByteSizeValue;
+import org.elasticsearch.common.util.concurrent.CountDown;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.features.FeatureService;
 import org.elasticsearch.health.HealthFeatures;
@@ -38,6 +39,7 @@ import org.junit.BeforeClass;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -182,6 +184,38 @@ public class LocalHealthMonitorTests extends ESTestCase {
         assertBusy(() -> assertThat(mockHealthTracker.getLastReportedValue(), equalTo(GREEN)));
         localHealthMonitor.clusterChanged(new ClusterChangedEvent("health-node-switch", current, previous));
         assertBusy(() -> assertThat(counter.get(), equalTo(2)));
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testConcurrentUpdatesThatOverlap() throws Exception {
+        ClusterState previous = ClusterStateCreationUtils.state(node, node, node, new DiscoveryNode[] { node, frozenNode })
+                .copyAndUpdate(b -> b.putCustom(HealthMetadata.TYPE, healthMetadata));
+        ClusterState current = ClusterStateCreationUtils.state(node, frozenNode, node, new DiscoveryNode[] { node, frozenNode })
+                .copyAndUpdate(b -> b.putCustom(HealthMetadata.TYPE, healthMetadata));
+
+        AtomicInteger healthInfoSent = new AtomicInteger(0);
+        CountDownLatch waitForMasterFailover = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            DiskHealthInfo diskHealthInfo = ((UpdateHealthInfoCacheAction.Request) invocation.getArgument(1)).getDiskHealthInfo();
+            ActionListener<AcknowledgedResponse> listener = (ActionListener<AcknowledgedResponse>) invocation.getArguments()[2];
+            assertThat(diskHealthInfo, equalTo(GREEN));
+            healthInfoSent.incrementAndGet();
+            waitForMasterFailover.await();
+            listener.onResponse(null);
+            return null;
+        }).when(client).execute(any(), any(), any());
+
+        when(clusterService.state()).thenReturn(previous);
+        localHealthMonitor.clusterChanged(new ClusterChangedEvent("start-up", previous, ClusterState.EMPTY_STATE));
+        // Update has been sent
+        assertBusy(() -> assertThat(healthInfoSent.get(), equalTo(1)));
+        // But the response hasn't been received yet
+        assertBusy(() -> assertThat(mockHealthTracker.getLastReportedValue(), nullValue()));
+        localHealthMonitor.clusterChanged(new ClusterChangedEvent("master-node-switch", current, previous));
+        waitForMasterFailover.countDown();
+        assertBusy(() -> assertThat(mockHealthTracker.getLastReportedValue(), equalTo(GREEN)));
+        assertBusy(() -> assertThat(healthInfoSent.get(), equalTo(2)));
+
     }
 
     @SuppressWarnings("unchecked")
