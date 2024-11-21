@@ -27,7 +27,7 @@ import org.elasticsearch.cluster.ClusterStateApplier;
 import org.elasticsearch.cluster.block.ClusterBlocks;
 import org.elasticsearch.cluster.metadata.AliasMetadata;
 import org.elasticsearch.cluster.metadata.ComposableIndexTemplate;
-import org.elasticsearch.cluster.metadata.DataStreamOptions;
+import org.elasticsearch.cluster.metadata.DataStreamTestHelper;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.metadata.IndexTemplateMetadata;
 import org.elasticsearch.cluster.metadata.Metadata;
@@ -323,7 +323,7 @@ public class TransportBulkActionIngestTests extends ESTestCase {
                     WITH_FAILURE_STORE_ENABLED,
                     ComposableIndexTemplate.builder()
                         .indexPatterns(List.of(WITH_FAILURE_STORE_ENABLED + "*"))
-                        .template(Template.builder().dataStreamOptions(DataStreamOptions.FAILURE_STORE_ENABLED))
+                        .template(Template.builder().dataStreamOptions(DataStreamTestHelper.createDataStreamOptionsTemplate(true)))
                         .dataStreamTemplate(new ComposableIndexTemplate.DataStreamTemplate())
                         .build()
                 )

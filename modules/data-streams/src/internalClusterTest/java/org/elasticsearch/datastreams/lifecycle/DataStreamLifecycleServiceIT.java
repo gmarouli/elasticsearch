@@ -39,9 +39,8 @@ import org.elasticsearch.cluster.coordination.StableMasterHealthIndicatorService
 import org.elasticsearch.cluster.metadata.ComposableIndexTemplate;
 import org.elasticsearch.cluster.metadata.DataStream;
 import org.elasticsearch.cluster.metadata.DataStreamAction;
-import org.elasticsearch.cluster.metadata.DataStreamFailureStore;
 import org.elasticsearch.cluster.metadata.DataStreamLifecycle;
-import org.elasticsearch.cluster.metadata.DataStreamOptions;
+import org.elasticsearch.cluster.metadata.DataStreamTestHelper;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.metadata.Template;
 import org.elasticsearch.cluster.node.DiscoveryNode;
@@ -1228,7 +1227,7 @@ public class DataStreamLifecycleServiceIT extends ESIntegTestCase {
                         .settings(settings)
                         .mappings(mappings == null ? null : CompressedXContent.fromJSON(mappings))
                         .lifecycle(lifecycle)
-                        .dataStreamOptions(new DataStreamOptions(new DataStreamFailureStore(withFailureStore)))
+                        .dataStreamOptions(DataStreamTestHelper.createDataStreamOptionsTemplate(withFailureStore))
                 )
                 .metadata(metadata)
                 .dataStreamTemplate(new ComposableIndexTemplate.DataStreamTemplate())

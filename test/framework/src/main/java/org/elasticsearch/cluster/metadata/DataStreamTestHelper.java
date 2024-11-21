@@ -466,7 +466,7 @@ public final class DataStreamTestHelper {
                 .template(
                     Template.builder()
                         .dataStreamOptions(
-                            DataStream.isFailureStoreFeatureFlagEnabled() && storeFailures ? DataStreamOptions.FAILURE_STORE_ENABLED : null
+                            DataStream.isFailureStoreFeatureFlagEnabled() && storeFailures ? createDataStreamOptionsTemplate(true) : null
                         )
                 )
                 .dataStreamTemplate(new ComposableIndexTemplate.DataStreamTemplate())
@@ -738,6 +738,15 @@ public final class DataStreamTestHelper {
             return ((CheckedFunction<IndexService, ?, ?>) invocationOnMock.getArguments()[1]).apply(indexService);
         });
         return indicesService;
+    }
+
+    public static DataStreamOptions.Template createDataStreamOptionsTemplate(Boolean failureStore) {
+        if (failureStore == null) {
+            return DataStreamOptions.Template.EMPTY;
+        }
+        return new DataStreamOptions.Template(
+            Map.of("failure_store", new DataStreamFailureStore.Template(Map.of("enabled", failureStore)))
+        );
     }
 
 }

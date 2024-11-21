@@ -268,7 +268,7 @@ public class MetadataCreateDataStreamServiceTests extends ESTestCase {
         final String dataStreamName = "my-data-stream";
         ComposableIndexTemplate template = ComposableIndexTemplate.builder()
             .indexPatterns(List.of(dataStreamName + "*"))
-            .template(Template.builder().dataStreamOptions(DataStreamOptions.FAILURE_STORE_ENABLED))
+            .template(Template.builder().dataStreamOptions(DataStreamTestHelper.createDataStreamOptionsTemplate(true)))
             .dataStreamTemplate(new ComposableIndexTemplate.DataStreamTemplate())
             .build();
         ClusterState cs = ClusterState.builder(new ClusterName("_name"))
@@ -310,7 +310,7 @@ public class MetadataCreateDataStreamServiceTests extends ESTestCase {
         final String dataStreamName = "my-data-stream";
         ComposableIndexTemplate template = ComposableIndexTemplate.builder()
             .indexPatterns(List.of(dataStreamName + "*"))
-            .template(Template.builder().dataStreamOptions(DataStreamOptions.FAILURE_STORE_ENABLED))
+            .template(Template.builder().dataStreamOptions(DataStreamTestHelper.createDataStreamOptionsTemplate(true)))
             .dataStreamTemplate(new ComposableIndexTemplate.DataStreamTemplate())
             .build();
         ClusterState cs = ClusterState.builder(new ClusterName("_name"))
@@ -349,7 +349,7 @@ public class MetadataCreateDataStreamServiceTests extends ESTestCase {
         final String dataStreamName = "my-data-stream";
         ComposableIndexTemplate template = ComposableIndexTemplate.builder()
             .indexPatterns(List.of(dataStreamName + "*"))
-            .template(Template.builder().dataStreamOptions(DataStreamOptions.FAILURE_STORE_ENABLED))
+            .template(Template.builder().dataStreamOptions(DataStreamTestHelper.createDataStreamOptionsTemplate(true)))
             .dataStreamTemplate(new ComposableIndexTemplate.DataStreamTemplate())
             .build();
         ClusterState cs = ClusterState.builder(new ClusterName("_name"))

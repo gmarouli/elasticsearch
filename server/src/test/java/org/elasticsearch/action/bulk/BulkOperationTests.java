@@ -147,13 +147,13 @@ public class BulkOperationTests extends ESTestCase {
                         ComposableIndexTemplate.builder()
                             .indexPatterns(List.of(dataStreamName))
                             .dataStreamTemplate(new ComposableIndexTemplate.DataStreamTemplate())
-                            .template(Template.builder().dataStreamOptions(DataStreamOptions.FAILURE_STORE_DISABLED))
+                            .template(Template.builder().dataStreamOptions(DataStreamTestHelper.createDataStreamOptionsTemplate(false)))
                             .build(),
                         "ds-template-with-failure-store",
                         ComposableIndexTemplate.builder()
                             .indexPatterns(List.of(fsDataStreamName, fsRolloverDataStreamName))
                             .dataStreamTemplate(new ComposableIndexTemplate.DataStreamTemplate())
-                            .template(Template.builder().dataStreamOptions(DataStreamOptions.FAILURE_STORE_ENABLED))
+                            .template(Template.builder().dataStreamOptions(DataStreamTestHelper.createDataStreamOptionsTemplate(true)))
                             .build()
                     )
                 )

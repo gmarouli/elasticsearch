@@ -28,7 +28,6 @@ import org.elasticsearch.client.internal.node.NodeClient;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.ComposableIndexTemplate;
 import org.elasticsearch.cluster.metadata.DataStream;
-import org.elasticsearch.cluster.metadata.DataStreamOptions;
 import org.elasticsearch.cluster.metadata.DataStreamTestHelper;
 import org.elasticsearch.cluster.metadata.IndexAbstraction;
 import org.elasticsearch.cluster.metadata.IndexAbstraction.ConcreteIndex;
@@ -466,13 +465,13 @@ public class TransportBulkActionTests extends ESTestCase {
                     dsTemplateWithFailureStore,
                     ComposableIndexTemplate.builder()
                         .indexPatterns(List.of(dsTemplateWithFailureStore + "-*"))
-                        .template(Template.builder().dataStreamOptions(DataStreamOptions.FAILURE_STORE_ENABLED))
+                        .template(Template.builder().dataStreamOptions(DataStreamTestHelper.createDataStreamOptionsTemplate(true)))
                         .dataStreamTemplate(new ComposableIndexTemplate.DataStreamTemplate())
                         .build(),
                     dsTemplateWithoutFailureStore,
                     ComposableIndexTemplate.builder()
                         .indexPatterns(List.of(dsTemplateWithoutFailureStore + "-*"))
-                        .template(Template.builder().dataStreamOptions(DataStreamOptions.FAILURE_STORE_DISABLED))
+                        .template(Template.builder().dataStreamOptions(DataStreamTestHelper.createDataStreamOptionsTemplate(false)))
                         .dataStreamTemplate(new ComposableIndexTemplate.DataStreamTemplate())
                         .build(),
                     indexTemplate,

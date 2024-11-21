@@ -1606,16 +1606,18 @@ public class MetadataIndexTemplateServiceTests extends ESSingleNodeTestCase {
         ClusterState state = ClusterState.EMPTY_STATE;
 
         String ctNoFailureStoreConfig = "no_failure_store";
-        state = addComponentTemplate(service, state, ctNoFailureStoreConfig, (DataStreamOptions) null);
+        state = addComponentTemplate(service, state, ctNoFailureStoreConfig, (DataStreamOptions.Template) null);
 
         String ctFailureStoreEnabled = "ct_failure_store_enabled";
-        state = addComponentTemplate(service, state, ctFailureStoreEnabled, DataStreamOptions.FAILURE_STORE_ENABLED);
+        state = addComponentTemplate(service, state, ctFailureStoreEnabled, DataStreamTestHelper.createDataStreamOptionsTemplate(true));
 
         String ctFailureStoreDisabled = "ct_failure_store_disabled";
-        state = addComponentTemplate(service, state, ctFailureStoreDisabled, DataStreamOptions.FAILURE_STORE_DISABLED);
+        state = addComponentTemplate(service, state, ctFailureStoreDisabled, DataStreamTestHelper.createDataStreamOptionsTemplate(false));
 
         String ctFailureStoreNullified = "ct_null_failure_store";
-        DataStreamOptions nullifiedFailureStore = new DataStreamOptions(DataStreamFailureStore.NULL);
+        Map<String, Object> nullFailureStore = new HashMap<>();
+        nullFailureStore.put("failure_store", randomBoolean() ? null : new DataStreamFailureStore.Template(null));
+        DataStreamOptions.Template nullifiedFailureStore = new DataStreamOptions.Template(nullFailureStore);
         state = addComponentTemplate(service, state, ctFailureStoreNullified, nullifiedFailureStore);
 
         // Component A: -
@@ -1635,7 +1637,7 @@ public class MetadataIndexTemplateServiceTests extends ESSingleNodeTestCase {
             service,
             state,
             List.of(ctFailureStoreDisabled),
-            DataStreamOptions.EMPTY,
+            DataStreamOptions.Template.EMPTY,
             DataStreamOptions.FAILURE_STORE_DISABLED
         );
 
@@ -1646,7 +1648,7 @@ public class MetadataIndexTemplateServiceTests extends ESSingleNodeTestCase {
             service,
             state,
             List.of(ctFailureStoreEnabled),
-            DataStreamOptions.FAILURE_STORE_DISABLED,
+            DataStreamTestHelper.createDataStreamOptionsTemplate(false),
             DataStreamOptions.FAILURE_STORE_DISABLED
         );
 
@@ -1657,7 +1659,7 @@ public class MetadataIndexTemplateServiceTests extends ESSingleNodeTestCase {
             service,
             state,
             List.of(ctFailureStoreNullified),
-            DataStreamOptions.FAILURE_STORE_DISABLED,
+            DataStreamTestHelper.createDataStreamOptionsTemplate(false),
             DataStreamOptions.FAILURE_STORE_DISABLED
         );
 
@@ -1674,7 +1676,7 @@ public class MetadataIndexTemplateServiceTests extends ESSingleNodeTestCase {
 
     public void testInvalidNonDataStreamTemplateWithDataStreamOptions() throws Exception {
         MetadataIndexTemplateService metadataIndexTemplateService = getMetadataIndexTemplateService();
-        Template template = Template.builder().dataStreamOptions(DataStreamOptionsTests.randomDataStreamOptions()).build();
+        Template template = Template.builder().dataStreamOptions(DataStreamOptionsTemplateTests.randomDataStreamOptions()).build();
         ComponentTemplate componentTemplate = new ComponentTemplate(template, 1L, new HashMap<>());
         ComposableIndexTemplate globalIndexTemplate = ComposableIndexTemplate.builder()
             .indexPatterns(List.of("my-index"))
@@ -1706,7 +1708,7 @@ public class MetadataIndexTemplateServiceTests extends ESSingleNodeTestCase {
         MetadataIndexTemplateService service,
         ClusterState state,
         String name,
-        DataStreamOptions dataStreamOptions
+        DataStreamOptions.Template dataStreamOptions
     ) throws Exception {
         return addComponentTemplate(service, state, name, dataStreamOptions, null);
     }
@@ -1715,7 +1717,7 @@ public class MetadataIndexTemplateServiceTests extends ESSingleNodeTestCase {
         MetadataIndexTemplateService service,
         ClusterState state,
         String name,
-        DataStreamOptions dataStreamOptions,
+        DataStreamOptions.Template dataStreamOptions,
         DataStreamLifecycle lifecycle
     ) throws Exception {
         ComponentTemplate ct = new ComponentTemplate(
@@ -1751,7 +1753,7 @@ public class MetadataIndexTemplateServiceTests extends ESSingleNodeTestCase {
         MetadataIndexTemplateService service,
         ClusterState state,
         List<String> composeOf,
-        DataStreamOptions dataStreamOptionsZ,
+        DataStreamOptions.Template dataStreamOptionsZ,
         DataStreamOptions expected
     ) throws Exception {
         ComposableIndexTemplate it = ComposableIndexTemplate.builder()
@@ -1764,11 +1766,15 @@ public class MetadataIndexTemplateServiceTests extends ESSingleNodeTestCase {
             .build();
         state = service.addIndexTemplateV2(state, true, "my-template", it);
 
-        DataStreamOptions resolvedDataStreamOptions = MetadataIndexTemplateService.resolveDataStreamOptions(
+        DataStreamOptions.Template resolvedDataStreamOptions = MetadataIndexTemplateService.resolveDataStreamOptions(
             state.metadata(),
             "my-template"
         );
-        assertThat(resolvedDataStreamOptions, equalTo(expected));
+        if (resolvedDataStreamOptions == null) {
+            assertThat(resolvedDataStreamOptions, nullValue());
+        } else {
+            assertThat(resolvedDataStreamOptions.toDataStreamOptions(), equalTo(expected));
+        }
     }
 
     public void testAddInvalidTemplate() throws Exception {

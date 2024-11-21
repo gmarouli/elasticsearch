@@ -23,8 +23,7 @@ import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.support.IndicesOptions;
 import org.elasticsearch.action.support.WriteRequest;
 import org.elasticsearch.cluster.metadata.ComposableIndexTemplate;
-import org.elasticsearch.cluster.metadata.DataStreamFailureStore;
-import org.elasticsearch.cluster.metadata.DataStreamOptions;
+import org.elasticsearch.cluster.metadata.DataStreamTestHelper;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.metadata.Template;
 import org.elasticsearch.common.compress.CompressedXContent;
@@ -297,7 +296,7 @@ public class IngestFailureStoreMetricsIT extends ESIntegTestCase {
                             "type": "long"
                         }
                       }
-                    }""")).dataStreamOptions(new DataStreamOptions(new DataStreamFailureStore(failureStore))))
+                    }""")).dataStreamOptions(DataStreamTestHelper.createDataStreamOptionsTemplate(failureStore)))
                 .build()
         );
         client().execute(TransportPutComposableIndexTemplateAction.TYPE, request).actionGet();

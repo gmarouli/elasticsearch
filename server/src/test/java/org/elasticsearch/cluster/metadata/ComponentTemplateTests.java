@@ -93,7 +93,7 @@ public class ComponentTemplateTests extends SimpleDiffableSerializationTestCase<
             templateBuilder.lifecycle(DataStreamLifecycleTests.randomLifecycle());
         }
         if (randomBoolean() && supportsDataStreams) {
-            templateBuilder.dataStreamOptions(randomDataStreamOptions());
+            templateBuilder.dataStreamOptions(DataStreamOptionsTemplateTests.randomDataStreamOptions());
         }
         Template template = templateBuilder.build();
 
@@ -102,12 +102,6 @@ public class ComponentTemplateTests extends SimpleDiffableSerializationTestCase<
             meta = randomMeta();
         }
         return new ComponentTemplate(template, randomBoolean() ? null : randomNonNegativeLong(), meta, deprecated);
-    }
-
-    private static DataStreamOptions randomDataStreamOptions() {
-        return rarely() ? Template.NO_DATA_STREAM_OPTIONS
-            : randomBoolean() ? DataStreamOptionsTests.randomDataStreamOptions()
-            : new DataStreamOptions(DataStreamFailureStore.NULL);
     }
 
     public static Map<String, AliasMetadata> randomAliases() {
@@ -188,7 +182,7 @@ public class ComponentTemplateTests extends SimpleDiffableSerializationTestCase<
                     case 4 -> new ComponentTemplate(
                         Template.builder(ot)
                             .dataStreamOptions(
-                                randomValueOtherThan(ot.dataStreamOptions(), ComponentTemplateTests::randomDataStreamOptions)
+                                randomValueOtherThan(ot.dataStreamOptions(), DataStreamOptionsTemplateTests::randomDataStreamOptions)
                             )
                             .build(),
                         orig.version(),
@@ -270,7 +264,7 @@ public class ComponentTemplateTests extends SimpleDiffableSerializationTestCase<
         Settings settings = null;
         CompressedXContent mappings = null;
         Map<String, AliasMetadata> aliases = null;
-        DataStreamOptions dataStreamOptions = null;
+        DataStreamOptions.Template dataStreamOptions = null;
         if (randomBoolean()) {
             settings = randomSettings();
         }
@@ -281,7 +275,7 @@ public class ComponentTemplateTests extends SimpleDiffableSerializationTestCase<
             aliases = randomAliases();
         }
         if (randomBoolean()) {
-            dataStreamOptions = randomDataStreamOptions();
+            dataStreamOptions = DataStreamOptionsTemplateTests.randomDataStreamOptions();
         }
         DataStreamLifecycle lifecycle = new DataStreamLifecycle();
         ComponentTemplate template = new ComponentTemplate(
