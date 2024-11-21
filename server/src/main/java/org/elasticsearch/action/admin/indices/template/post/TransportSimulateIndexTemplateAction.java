@@ -350,7 +350,7 @@ public class TransportSimulateIndexTemplateAction extends TransportMasterNodeRea
         if (template.getDataStreamTemplate() != null && lifecycle == null && isDslOnlyMode) {
             lifecycle = DataStreamLifecycle.DEFAULT;
         }
-        DataStreamOptions dataStreamOptions = resolveDataStreamOptions(simulatedState.metadata(), matchingTemplate);
+        DataStreamOptions.Template dataStreamOptions = resolveDataStreamOptions(simulatedState.metadata(), matchingTemplate);
         return new Template(settings, mergedMapping, aliasesByName, lifecycle, dataStreamOptions);
     }
 

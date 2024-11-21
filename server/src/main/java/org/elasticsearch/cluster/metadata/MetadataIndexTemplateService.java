@@ -819,8 +819,8 @@ public class MetadataIndexTemplateService {
 
     // Visible for testing
     static void validateDataStreamOptions(Metadata metadata, String indexTemplateName, ComposableIndexTemplate template) {
-        DataStreamOptions dataStreamOptions = resolveDataStreamOptions(template, metadata.componentTemplates());
-        if (dataStreamOptions != null) {
+        DataStreamOptions.Template dataStreamOptions = resolveDataStreamOptions(template, metadata.componentTemplates());
+        if (dataStreamOptions != null && dataStreamOptions.isNullified() == false) {
             if (template.getDataStreamTemplate() == null) {
                 throw new IllegalArgumentException(
                     "index template ["
@@ -1669,7 +1669,7 @@ public class MetadataIndexTemplateService {
      * Resolve the given v2 template into a {@link DataStreamOptions} object
      */
     @Nullable
-    public static DataStreamOptions resolveDataStreamOptions(final Metadata metadata, final String templateName) {
+    public static DataStreamOptions.Template resolveDataStreamOptions(final Metadata metadata, final String templateName) {
         final ComposableIndexTemplate template = metadata.templatesV2().get(templateName);
         assert template != null
             : "attempted to resolve data stream options for a template [" + templateName + "] that did not exist in the cluster state";
@@ -1683,19 +1683,19 @@ public class MetadataIndexTemplateService {
      * Resolve the provided v2 template and component templates into a {@link DataStreamOptions} object
      */
     @Nullable
-    public static DataStreamOptions resolveDataStreamOptions(
+    public static DataStreamOptions.Template resolveDataStreamOptions(
         ComposableIndexTemplate template,
         Map<String, ComponentTemplate> componentTemplates
     ) {
         Objects.requireNonNull(template, "attempted to resolve data stream for a null template");
         Objects.requireNonNull(componentTemplates, "attempted to resolve data stream options with null component templates");
 
-        List<DataStreamOptions> dataStreamOptionsList = new ArrayList<>();
+        List<DataStreamOptions.Template> dataStreamOptionsList = new ArrayList<>();
         for (String componentTemplateName : template.composedOf()) {
             if (componentTemplates.containsKey(componentTemplateName) == false) {
                 continue;
             }
-            DataStreamOptions dataStreamOptions = componentTemplates.get(componentTemplateName).template().dataStreamOptions();
+            DataStreamOptions.Template dataStreamOptions = componentTemplates.get(componentTemplateName).template().dataStreamOptions();
             if (dataStreamOptions != null) {
                 dataStreamOptionsList.add(dataStreamOptions);
             }
@@ -1715,21 +1715,19 @@ public class MetadataIndexTemplateService {
      * @return the final data stream option configuration
      */
     @Nullable
-    public static DataStreamOptions composeDataStreamOptions(List<DataStreamOptions> dataStreamOptionsList) {
+    public static DataStreamOptions.Template composeDataStreamOptions(List<DataStreamOptions.Template> dataStreamOptionsList) {
         if (dataStreamOptionsList.isEmpty()) {
             return null;
         }
-        DataStreamOptions.Composer composer = null;
-        for (DataStreamOptions current : dataStreamOptionsList) {
-            if (current == Template.NO_DATA_STREAM_OPTIONS) {
-                composer = null;
-            } else if (composer == null) {
-                composer = DataStreamOptions.composer(current);
-            } else {
-                composer.apply(current);
+        DataStreamOptions.Template template = null;
+        for (DataStreamOptions.Template current : dataStreamOptionsList) {
+            if (template == null) {
+                template = current;
+            } else if (current != null) {
+                template = template.merge(current, DataStreamOptions.Template::new);
             }
         }
-        return composer == null ? null : composer.compose();
+        return template;
     }
 
     /**

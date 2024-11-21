@@ -12,6 +12,7 @@ package org.elasticsearch.cluster.metadata;
 import org.elasticsearch.cluster.Diff;
 import org.elasticsearch.cluster.SimpleDiffable;
 import org.elasticsearch.common.Strings;
+import org.elasticsearch.common.collect.ImmutableOpenMap;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.core.Nullable;
@@ -23,41 +24,27 @@ import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentParser;
 
 import java.io.IOException;
-import java.util.Objects;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Holds the data stream failure store metadata that enable or disable the failure store of a data stream. Currently, it
  * supports the following configurations only explicitly enabling or disabling the failure store
  */
-public class DataStreamFailureStore implements SimpleDiffable<DataStreamFailureStore>, ToXContentObject {
+public record DataStreamFailureStore(@Nullable Boolean enabled) implements SimpleDiffable<DataStreamFailureStore>, ToXContentObject {
+    public static final String FAILURE_STORE = "failure_store";
+    public static final String ENABLED = "enabled";
 
-    public static final DataStreamFailureStore NULL = new DataStreamFailureStore();
-    public static final ParseField ENABLED_FIELD = new ParseField("enabled");
+    public static final ParseField ENABLED_FIELD = new ParseField(ENABLED);
 
     public static final ConstructingObjectParser<DataStreamFailureStore, Void> PARSER = new ConstructingObjectParser<>(
-        "failure_store",
+        FAILURE_STORE,
         false,
-        (args, unused) -> new DataStreamFailureStore((DataStreamOptions.NullableFlag) args[0])
+        (args, unused) -> new DataStreamFailureStore((Boolean) args[0])
     );
 
-    @Nullable
-    private final DataStreamOptions.NullableFlag enabled;
-
     static {
-        PARSER.declareField(ConstructingObjectParser.optionalConstructorArg(), (p, c) -> {
-            if (p.isBooleanValue() == false) {
-                return DataStreamOptions.NullableFlag.NULL_VALUE;
-            } else {
-                return p.booleanValue() ? DataStreamOptions.NullableFlag.TRUE : DataStreamOptions.NullableFlag.FALSE;
-            }
-        }, ENABLED_FIELD, ObjectParser.ValueType.BOOLEAN_OR_NULL);
-    }
-
-    /**
-     * This constructor is only used to represent the <code>null</code> value in a template.
-     */
-    private DataStreamFailureStore() {
-        this.enabled = null;
+        PARSER.declareBoolean(ConstructingObjectParser.optionalConstructorArg(), ENABLED_FIELD);
     }
 
     /**
@@ -65,63 +52,23 @@ public class DataStreamFailureStore implements SimpleDiffable<DataStreamFailureS
      *                 null value is not supported because there are no other arguments
      * @throws IllegalArgumentException when all the constructor arguments are null
      */
-    public DataStreamFailureStore(@Nullable Boolean enabled) {
-        this(DataStreamOptions.NullableFlag.fromBoolean(enabled));
-    }
-
-    /**
-     * @param enabled, the flag configuration, that can be true, false and implicit or explicit null. Currently,
-     *                 null value is not supported because there are no other arguments
-     * @throws IllegalArgumentException when all the constructor arguments are null
-     */
-    public DataStreamFailureStore(@Nullable DataStreamOptions.NullableFlag enabled) {
-        if (DataStreamOptions.NullableFlag.isDefined(enabled) == false) {
+    public DataStreamFailureStore {
+        if (enabled == null) {
             throw new IllegalArgumentException("Failure store configuration should have at least one non-null configuration value.");
         }
-        this.enabled = enabled;
     }
 
     public static DataStreamFailureStore read(StreamInput in) throws IOException {
-        var enabled = in.readOptionalWriteable(DataStreamOptions.NullableFlag::read);
-        if (enabled == null) {
-            return NULL;
-        }
-        return new DataStreamFailureStore(enabled);
+        return new DataStreamFailureStore(in.readOptionalBoolean());
     }
 
     public static Diff<DataStreamFailureStore> readDiffFrom(StreamInput in) throws IOException {
         return SimpleDiffable.readDiffFrom(DataStreamFailureStore::read, in);
     }
 
-    /**
-     * @return iff the value represents a user explicitly nullifying the failure store.
-     */
-    public boolean isNullified() {
-        return equals(NULL);
-    }
-
-    /**
-     * @return exposes the value of the enabled flag
-     */
-    @Nullable
-    public DataStreamOptions.NullableFlag enabled() {
-        return enabled;
-    }
-
-    /**
-     * @return failure store configuration that replaces explicit null value with null.
-     */
-    @Nullable
-    public static DataStreamFailureStore resolveExplicitNullValues(DataStreamFailureStore failureStore) {
-        if (failureStore == null || failureStore.enabled == DataStreamOptions.NullableFlag.NULL_VALUE || failureStore.isNullified()) {
-            return null;
-        }
-        return failureStore;
-    }
-
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        out.writeOptionalWriteable(enabled);
+        out.writeOptionalBoolean(enabled);
     }
 
     @Override
@@ -131,16 +78,11 @@ public class DataStreamFailureStore implements SimpleDiffable<DataStreamFailureS
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        if (isNullified()) {
-            builder.nullValue();
-        } else {
-            builder.startObject();
-            if (enabled != null) {
-                builder.field(ENABLED_FIELD.getPreferredName());
-                enabled.toXContent(builder, params);
-            }
-            builder.endObject();
+        builder.startObject();
+        if (enabled != null) {
+            builder.field(ENABLED_FIELD.getPreferredName(), enabled);
         }
+        builder.endObject();
         return builder;
     }
 
@@ -148,16 +90,63 @@ public class DataStreamFailureStore implements SimpleDiffable<DataStreamFailureS
         return PARSER.parse(parser, null);
     }
 
-    @Override
-    public boolean equals(Object obj) {
-        if (obj == this) return true;
-        if (obj == null || obj.getClass() != this.getClass()) return false;
-        var that = (DataStreamFailureStore) obj;
-        return Objects.equals(this.enabled, that.enabled);
-    }
+    /**
+     * This class is only used in template configuration. It allows us to represent explicit null values and denotes that the fields
+     * of the failure can be merged.
+     */
+    public static class Template extends ComposableOptions {
 
-    @Override
-    public int hashCode() {
-        return Objects.hash(enabled);
+        public static final ObjectParser<ImmutableOpenMap.Builder<String, Object>, Void> PARSER = new ObjectParser<>(
+            "failure_store_template"
+        );
+
+        static {
+            PARSER.declareField(
+                (map, v) -> map.put(ENABLED, v),
+                p -> p.currentToken() == XContentParser.Token.VALUE_NULL ? null : p.booleanValue(),
+                ENABLED_FIELD,
+                ObjectParser.ValueType.BOOLEAN_OR_NULL
+            );
+        }
+
+        public Template(Map<String, Object> optionsMap) {
+            super(optionsMap);
+        }
+
+        @Override
+        public void writeTo(StreamOutput out) throws IOException {
+            ComposableOptions.writeOptionalExplicitlyNullable(
+                out,
+                isDefined(ENABLED),
+                getOptionAsBoolean(ENABLED),
+                (StreamOutput::writeBoolean)
+            );
+        }
+
+        public static Template read(StreamInput in) throws IOException {
+            Map<String, Object> template = new HashMap<>();
+            ComposableOptions.readOptionalExplicitlyNullable(in, template, ENABLED, StreamInput::readBoolean);
+            return new Template(template);
+        }
+
+        public static DataStreamFailureStore.Template fromXContent(XContentParser parser) throws IOException {
+            ImmutableOpenMap.Builder<String, Object> map = ImmutableOpenMap.builder();
+            PARSER.parse(parser, map, null);
+            return new Template(map.build());
+        }
+
+        @Nullable
+        public DataStreamFailureStore toFailureStore() {
+            if (isNullified()) {
+                return null;
+            }
+            Boolean enabled = getOptionAsBoolean(ENABLED);
+            return new DataStreamFailureStore(enabled);
+        }
+
+        @Override
+        public ComposableOptions create(Map<String, Object> optionsMap) {
+            return new DataStreamFailureStore.Template(optionsMap);
+        }
     }
 }
