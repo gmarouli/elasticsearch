@@ -9,7 +9,6 @@
 
 package org.elasticsearch.action.support;
 
-import org.elasticsearch.TransportVersions;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.io.stream.Writeable;
@@ -24,11 +23,14 @@ import java.util.Map;
  * We define as index components the two different sets of indices a data stream could consist of:
  * - DATA: represents the backing indices
  * - FAILURES: represent the failing indices
+ * - ALL: represents all available in this expression components, meaning if it's a data stream both backing and failure indices and if it's
+ * an index only the index itself.
  * Note: An index is its own DATA component, but it cannot have a FAILURE component.
  */
 public enum IndexComponentSelector implements Writeable {
     DATA("data", (byte) 0),
-    FAILURES("failures", (byte) 1);
+    FAILURES("failures", (byte) 1),
+    ALL_APPLICABLE("*", (byte) 2);
 
     private final String key;
     private final byte id;
@@ -73,13 +75,7 @@ public enum IndexComponentSelector implements Writeable {
     }
 
     public static IndexComponentSelector read(StreamInput in) throws IOException {
-        byte id = in.readByte();
-        if (in.getTransportVersion().onOrAfter(TransportVersions.REMOVE_ALL_APPLICABLE_SELECTOR_BACKPORT_8_X)) {
-            return getById(id);
-        } else {
-            // Legacy value ::*, converted to ::data
-            return id == 2 ? DATA : getById(id);
-        }
+        return getById(in.readByte());
     }
 
     // Visible for testing
@@ -99,10 +95,10 @@ public enum IndexComponentSelector implements Writeable {
     }
 
     public boolean shouldIncludeData() {
-        return this == DATA;
+        return this == ALL_APPLICABLE || this == DATA;
     }
 
     public boolean shouldIncludeFailures() {
-        return this == FAILURES;
+        return this == ALL_APPLICABLE || this == FAILURES;
     }
 }
