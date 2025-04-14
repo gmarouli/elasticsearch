@@ -846,6 +846,10 @@ public class DataStreamLifecycleService implements ClusterStateListener, Closeab
         }
         try {
             if (dataStream.isIndexManagedByDataStreamLifecycle(currentRunWriteIndex, project::index)) {
+                // if the data stream is replicated we skip rolling over.
+                if (dataStream.isReplicated()) {
+                    return currentRunWriteIndex;
+                }
                 DataStreamLifecycle lifecycle = rolloverFailureStore ? dataStream.getFailuresLifecycle() : dataStream.getDataLifecycle();
                 RolloverRequest rolloverRequest = getDefaultRolloverRequest(
                     rolloverConfiguration,
