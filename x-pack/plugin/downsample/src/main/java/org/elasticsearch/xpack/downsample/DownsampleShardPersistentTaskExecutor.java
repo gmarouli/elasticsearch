@@ -230,13 +230,9 @@ public class DownsampleShardPersistentTaskExecutor extends PersistentTasksExecut
                         downsampleMetrics,
                         params.shardId(),
                         params.downsampleIndex(),
-                        params.downsampleConfig(),
-                        params.metrics(),
-                        params.labels(),
-                        params.dimensions(),
                         initialState
                     );
-                    downsampleShardIndexer.execute();
+                    downsampleShardIndexer.execute(params.downsampleConfig(), params.metrics(), params.labels(), params.dimensions());
                     task.markAsCompleted();
                 } catch (final DownsampleShardIndexerException e) {
                     if (e.isRetriable()) {

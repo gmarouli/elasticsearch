@@ -22,7 +22,7 @@ import java.util.Map;
 import static org.elasticsearch.index.mapper.TimeSeriesParams.TIME_SERIES_DIMENSION_PARAM;
 import static org.elasticsearch.index.mapper.TimeSeriesParams.TIME_SERIES_METRIC_PARAM;
 
-class TimeseriesFieldTypeHelper {
+public class TimeseriesFieldTypeHelper {
 
     private final MapperService mapperService;
     private final String timestampField;
@@ -69,10 +69,10 @@ class TimeseriesFieldTypeHelper {
         return null;
     }
 
-    static class Builder {
+    public static class Builder {
         private final MapperService mapperService;
 
-        Builder(final MapperService mapperService) {
+        public Builder(final MapperService mapperService) {
             this.mapperService = mapperService;
         }
 
