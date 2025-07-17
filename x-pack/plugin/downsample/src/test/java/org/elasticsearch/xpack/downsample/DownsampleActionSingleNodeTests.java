@@ -705,14 +705,18 @@ public class DownsampleActionSingleNodeTests extends ESSingleNodeTestCase {
             getInstanceFromNode(DownsampleMetrics.class),
             shard.shardId(),
             downsampleIndex,
-            config,
-            new String[] { FIELD_NUMERIC_1, FIELD_NUMERIC_2 },
-            new String[] {},
-            new String[] { FIELD_DIMENSION_1, FIELD_DIMENSION_2 },
             new DownsampleShardPersistentTaskState(DownsampleShardIndexerStatus.INITIALIZED, null)
         );
 
-        DownsampleShardIndexerException exception = expectThrows(DownsampleShardIndexerException.class, () -> indexer.execute());
+        DownsampleShardIndexerException exception = expectThrows(
+            DownsampleShardIndexerException.class,
+            () -> indexer.execute(
+                config,
+                new String[] { FIELD_NUMERIC_1, FIELD_NUMERIC_2 },
+                new String[] {},
+                new String[] { FIELD_DIMENSION_1, FIELD_DIMENSION_2 }
+            )
+        );
         assertThat(exception.getCause().getMessage(), equalTo("Shard [" + sourceIndex + "][" + shardNum + "] downsample cancelled"));
     }
 
@@ -755,10 +759,6 @@ public class DownsampleActionSingleNodeTests extends ESSingleNodeTestCase {
             getInstanceFromNode(DownsampleMetrics.class),
             shard.shardId(),
             downsampleIndex,
-            config,
-            new String[] { FIELD_NUMERIC_1, FIELD_NUMERIC_2 },
-            new String[] {},
-            new String[] { FIELD_DIMENSION_1, FIELD_DIMENSION_2 },
             new DownsampleShardPersistentTaskState(DownsampleShardIndexerStatus.INITIALIZED, null)
         );
 
@@ -769,7 +769,15 @@ public class DownsampleActionSingleNodeTests extends ESSingleNodeTestCase {
                 .setSettings(Settings.builder().put("index.blocks.write", "true").build())
         );
 
-        ElasticsearchException exception = expectThrows(ElasticsearchException.class, indexer::execute);
+        ElasticsearchException exception = expectThrows(
+            ElasticsearchException.class,
+            () -> indexer.execute(
+                config,
+                new String[] { FIELD_NUMERIC_1, FIELD_NUMERIC_2 },
+                new String[] {},
+                new String[] { FIELD_DIMENSION_1, FIELD_DIMENSION_2 }
+            )
+        );
         assertThat(
             exception.getMessage(),
             equalTo(
@@ -823,10 +831,6 @@ public class DownsampleActionSingleNodeTests extends ESSingleNodeTestCase {
             getInstanceFromNode(DownsampleMetrics.class),
             shard.shardId(),
             downsampleIndex,
-            config,
-            new String[] { FIELD_NUMERIC_1, FIELD_NUMERIC_2 },
-            new String[] {},
-            new String[] { FIELD_DIMENSION_1, FIELD_DIMENSION_2 },
             new DownsampleShardPersistentTaskState(DownsampleShardIndexerStatus.INITIALIZED, null)
         );
         /*
@@ -835,7 +839,12 @@ public class DownsampleActionSingleNodeTests extends ESSingleNodeTestCase {
          */
         indexer.downsampleMaxBytesInFlight = ByteSizeValue.ofBytes(1024);
         indexer.downsampleBulkSize = ByteSizeValue.ofBytes(512);
-        indexer.execute();
+        indexer.execute(
+            config,
+            new String[] { FIELD_NUMERIC_1, FIELD_NUMERIC_2 },
+            new String[] {},
+            new String[] { FIELD_DIMENSION_1, FIELD_DIMENSION_2 }
+        );
     }
 
     public void testDownsampleStats() throws Exception {
@@ -876,10 +885,6 @@ public class DownsampleActionSingleNodeTests extends ESSingleNodeTestCase {
                 getInstanceFromNode(DownsampleMetrics.class),
                 shard.shardId(),
                 downsampleIndex,
-                config,
-                new String[] { FIELD_NUMERIC_1, FIELD_NUMERIC_2 },
-                new String[] {},
-                new String[] { FIELD_DIMENSION_1, FIELD_DIMENSION_2 },
                 new DownsampleShardPersistentTaskState(DownsampleShardIndexerStatus.INITIALIZED, null)
             );
 
@@ -889,7 +894,12 @@ public class DownsampleActionSingleNodeTests extends ESSingleNodeTestCase {
             assertEquals(0L, task.getDownsampleBulkInfo().bulkIngestSumMillis());
             assertEquals(DownsampleShardIndexerStatus.INITIALIZED, task.getDownsampleShardIndexerStatus());
 
-            final DownsampleIndexerAction.ShardDownsampleResponse executeResponse = indexer.execute();
+            final DownsampleIndexerAction.ShardDownsampleResponse executeResponse = indexer.execute(
+                config,
+                new String[] { FIELD_NUMERIC_1, FIELD_NUMERIC_2 },
+                new String[] {},
+                new String[] { FIELD_DIMENSION_1, FIELD_DIMENSION_2 }
+            );
 
             assertDownsampleIndexer(indexService, shardNum, task, executeResponse, task.getTotalShardDocCount());
         }
@@ -934,10 +944,6 @@ public class DownsampleActionSingleNodeTests extends ESSingleNodeTestCase {
             getInstanceFromNode(DownsampleMetrics.class),
             shard.shardId(),
             downsampleIndex,
-            config,
-            new String[] { FIELD_NUMERIC_1, FIELD_NUMERIC_2 },
-            new String[] {},
-            new String[] { FIELD_DIMENSION_1, FIELD_DIMENSION_2 },
             new DownsampleShardPersistentTaskState(
                 DownsampleShardIndexerStatus.STARTED,
                 new BytesRef(
@@ -966,7 +972,12 @@ public class DownsampleActionSingleNodeTests extends ESSingleNodeTestCase {
             )
         );
 
-        final DownsampleIndexerAction.ShardDownsampleResponse response2 = indexer.execute();
+        final DownsampleIndexerAction.ShardDownsampleResponse response2 = indexer.execute(
+            config,
+            new String[] { FIELD_NUMERIC_1, FIELD_NUMERIC_2 },
+            new String[] {},
+            new String[] { FIELD_DIMENSION_1, FIELD_DIMENSION_2 }
+        );
 
         assertDownsampleIndexer(indexService, shardNum, task, response2, task.getTotalShardDocCount());
     }
@@ -1010,10 +1021,7 @@ public class DownsampleActionSingleNodeTests extends ESSingleNodeTestCase {
             getInstanceFromNode(DownsampleMetrics.class),
             shard.shardId(),
             downsampleIndex,
-            config,
-            new String[] { FIELD_NUMERIC_1, FIELD_NUMERIC_2 },
-            new String[] {},
-            new String[] { FIELD_DIMENSION_1 },
+
             new DownsampleShardPersistentTaskState(
                 DownsampleShardIndexerStatus.STARTED,
                 // NOTE: there is just one dimension with two possible values, this needs to be one of the two possible tsid values.
@@ -1060,7 +1068,12 @@ public class DownsampleActionSingleNodeTests extends ESSingleNodeTestCase {
             )
         );
 
-        final DownsampleIndexerAction.ShardDownsampleResponse response2 = indexer.execute();
+        final DownsampleIndexerAction.ShardDownsampleResponse response2 = indexer.execute(
+            config,
+            new String[] { FIELD_NUMERIC_1, FIELD_NUMERIC_2 },
+            new String[] {},
+            new String[] { FIELD_DIMENSION_1 }
+        );
         long dim2DocCount = SearchResponseUtils.getTotalHitsValue(
             client().prepareSearch(sourceIndex).setQuery(new TermQueryBuilder(FIELD_DIMENSION_1, "dim1")).setSize(10_000)
         );
