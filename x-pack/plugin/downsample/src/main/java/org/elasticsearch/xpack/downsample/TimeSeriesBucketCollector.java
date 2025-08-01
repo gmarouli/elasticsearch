@@ -64,9 +64,9 @@ public class TimeSeriesBucketCollector extends BucketCollector {
     private final String downsampleIndex;
     private final TrackingProgress trackingProgress;
     private final IndexShard indexShard;
-    private final SearchExecutionContext searchExecutionContext;
     private final DocValueFormat timestampFormat;
     private final DateFieldMapper.DateFieldType timestampField;
+    private final long timeBoundStartTime;
     private long docsProcessed;
     private long bucketsCreated;
     long lastTimestamp = Long.MAX_VALUE;
@@ -84,6 +84,7 @@ public class TimeSeriesBucketCollector extends BucketCollector {
         AtomicBoolean abort,
         TrackingProgress trackingProgress,
         SearchExecutionContext searchExecutionContext,
+        long timeBoundStartTime,
         Client client
     ) {
         this.bulkProcessor = bulkProcessor;
@@ -99,7 +100,7 @@ public class TimeSeriesBucketCollector extends BucketCollector {
         this.cancellationCheck = cancellationCheck;
         this.abort = abort;
         this.trackingProgress = trackingProgress;
-        this.searchExecutionContext = searchExecutionContext;
+        this.timeBoundStartTime = timeBoundStartTime;
         this.timestampField = (DateFieldMapper.DateFieldType) searchExecutionContext.getFieldType(config.getTimestampField());
         this.timestampFormat = timestampField.docValueFormat(null, null);
         AbstractDownsampleFieldProducer[] fieldProducers = fieldValueFetchers.stream()
@@ -137,7 +138,8 @@ public class TimeSeriesBucketCollector extends BucketCollector {
             nonMetricProducers.toArray(new AbstractDownsampleFieldProducer[0]),
             formattedDocValues.toArray(new FormattedDocValues[0]),
             metricProducers.toArray(new MetricFieldProducer[0]),
-            numericDocValues.toArray(new SortedNumericDoubleValues[0])
+            numericDocValues.toArray(new SortedNumericDoubleValues[0]),
+            timeBoundStartTime
         );
         leafBucketCollectors.add(leafBucketCollector);
         return leafBucketCollector;
@@ -164,7 +166,7 @@ public class TimeSeriesBucketCollector extends BucketCollector {
         // Capture the first timestamp in order to determine which leaf collector's leafBulkCollection() is invoked first.
         long firstTimeStampForBulkCollection;
         final IntArrayList docIdBuffer = new IntArrayList(DOCID_BUFFER_SIZE);
-        final long timestampBoundStartTime = searchExecutionContext.getIndexSettings().getTimestampBounds().startTime();
+        final long timestampBoundStartTime;
 
         LeafDownsampleCollector(
             AggregationExecutionContext aggCtx,
@@ -172,7 +174,8 @@ public class TimeSeriesBucketCollector extends BucketCollector {
             AbstractDownsampleFieldProducer[] nonMetricProducers,
             FormattedDocValues[] formattedDocValues,
             MetricFieldProducer[] metricProducers,
-            SortedNumericDoubleValues[] numericDocValues
+            SortedNumericDoubleValues[] numericDocValues,
+            long timestampBoundStartTime
         ) {
             assert nonMetricProducers.length == formattedDocValues.length;
             assert metricProducers.length == numericDocValues.length;
@@ -183,6 +186,7 @@ public class TimeSeriesBucketCollector extends BucketCollector {
             this.formattedDocValues = formattedDocValues;
             this.metricProducers = metricProducers;
             this.numericDocValues = numericDocValues;
+            this.timestampBoundStartTime = timestampBoundStartTime;
         }
 
         @Override
@@ -295,6 +299,7 @@ public class TimeSeriesBucketCollector extends BucketCollector {
     private void indexBucket(XContentBuilder doc) {
         IndexRequestBuilder request = client.prepareIndex(downsampleIndex);
         request.setSource(doc);
+        request.setOpType(IndexRequest.OpType.CREATE);
         if (logger.isTraceEnabled()) {
             logger.trace("Indexing downsample doc: [{}]", Strings.toString(doc));
         }

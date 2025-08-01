@@ -50,6 +50,7 @@ import org.elasticsearch.index.mapper.DocumentMapper;
 import org.elasticsearch.index.mapper.MapperService;
 import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.indices.SystemIndices;
+import org.elasticsearch.search.aggregations.bucket.histogram.DateHistogramInterval;
 import org.elasticsearch.xcontent.ConstructingObjectParser;
 import org.elasticsearch.xcontent.NamedXContentRegistry;
 import org.elasticsearch.xcontent.ObjectParser;
@@ -96,6 +97,7 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
 
     public static final String BACKING_INDEX_PREFIX = ".ds-";
     public static final String FAILURE_STORE_PREFIX = ".fs-";
+    public static final String DOWNSAMPLED_PREFIX = ".downsampled-";
     public static final DateFormatter DATE_FORMATTER = DateFormatter.forPattern("uuuu.MM.dd");
     public static final String TIMESTAMP_FIELD_NAME = "@timestamp";
 
@@ -1392,6 +1394,14 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
         return getDefaultIndexName(BACKING_INDEX_PREFIX, dataStreamName, generation, epochMillis);
     }
 
+    public static String getDefaultDownsampleLayerIndexName(String dataStreamName, DateHistogramInterval interval) {
+        return getDefaultDownsampleLayerIndexName(dataStreamName, interval.toString());
+    }
+
+    public static String getDefaultDownsampleLayerIndexName(String dataStreamName, String interval) {
+        return String.format(Locale.ROOT, "%s%s-%s", DOWNSAMPLED_PREFIX, interval, dataStreamName);
+    }
+
     /**
      * Generates the name of the index that conforms to the default naming convention for backing indices
      * on data streams given the specified data stream name, generation, and time.
@@ -1883,6 +1893,14 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
 
     public Builder copy() {
         return new Builder(this);
+    }
+
+    public boolean hasIncrementalDownsamplingEnabled() {
+        return dataStreamOptions != null && dataStreamOptions.dataStreamDownsampling() != null;
+    }
+
+    public boolean isDownsampledLayer() {
+        return name.startsWith(DOWNSAMPLED_PREFIX);
     }
 
     public static class DataStreamIndices {
