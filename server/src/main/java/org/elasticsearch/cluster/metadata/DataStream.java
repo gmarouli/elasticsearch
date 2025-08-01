@@ -145,6 +145,8 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
     private final DataStreamIndices backingIndices;
     private final DataStreamIndices failureIndices;
 
+    Map<String, IncrementalDownsamplingProgress> downsamplingProgress;
+
     // visible for testing
     public DataStream(
         String name,
@@ -216,7 +218,8 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
             lifecycle,
             dataStreamOptions,
             new DataStreamIndices(BACKING_INDEX_PREFIX, List.copyOf(indices), rolloverOnWrite, autoShardingEvent),
-            new DataStreamIndices(FAILURE_STORE_PREFIX, List.copyOf(failureIndices), false, null)
+            new DataStreamIndices(FAILURE_STORE_PREFIX, List.copyOf(failureIndices), false, null),
+            Map.of()
         );
     }
 
@@ -235,7 +238,8 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
         DataStreamLifecycle lifecycle,
         DataStreamOptions dataStreamOptions,
         DataStreamIndices backingIndices,
-        DataStreamIndices failureIndices
+        DataStreamIndices failureIndices,
+        Map<String, IncrementalDownsamplingProgress> downsamplingProgress
     ) {
         this.name = name;
         this.generation = generation;
@@ -258,6 +262,7 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
             : "replicated data streams cannot be marked for lazy rollover";
         this.backingIndices = backingIndices;
         this.failureIndices = failureIndices;
+        this.downsamplingProgress = downsamplingProgress;
     }
 
     public static DataStream read(StreamInput in) throws IOException {
@@ -309,6 +314,10 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
         } else {
             mappings = EMPTY_MAPPINGS;
         }
+        Map<String, IncrementalDownsamplingProgress> downsamplingProgress = Map.of();
+        if (in.getTransportVersion().onOrAfter(TransportVersions.ADD_INCREMENTAL_DOWNSAMPLING_METADATA)) {
+            downsamplingProgress = in.readMap(StreamInput::readString, IncrementalDownsamplingProgress::new);
+        }
         return new DataStream(
             name,
             generation,
@@ -324,7 +333,8 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
             lifecycle,
             dataStreamOptions,
             backingIndicesBuilder.build(),
-            failureIndicesBuilder.build()
+            failureIndicesBuilder.build(),
+            downsamplingProgress
         );
     }
 
@@ -1450,6 +1460,9 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
         if (out.getTransportVersion().onOrAfter(TransportVersions.MAPPINGS_IN_DATA_STREAMS)) {
             mappings.writeTo(out);
         }
+        if (out.getTransportVersion().onOrAfter(TransportVersions.ADD_INCREMENTAL_DOWNSAMPLING_METADATA)) {
+            out.writeMap(downsamplingProgress, (o, v) -> v.writeTo(o));
+        }
     }
 
     public static final ParseField NAME_FIELD = new ParseField("name");
@@ -1855,12 +1868,16 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
         return hasIncrementalDownsamplingEnabled(name);
     }
 
-    private static boolean hasIncrementalDownsamplingEnabled(String name) {
+    public static boolean hasIncrementalDownsamplingEnabled(String name) {
         return name.startsWith("id-");
     }
 
-    public boolean isDownsampledLayer(e) {
+    public boolean isDownsampledLayer() {
         return name.startsWith(DOWNSAMPLED_PREFIX);
+    }
+
+    public IncrementalDownsamplingProgress getDownsamplingProgress(String interval) {
+        return downsamplingProgress.get(interval);
     }
 
     public static class DataStreamIndices {
@@ -2008,6 +2025,7 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
         private DataStreamOptions dataStreamOptions = DataStreamOptions.EMPTY;
         private DataStreamIndices backingIndices;
         private DataStreamIndices failureIndices = DataStreamIndices.failureIndicesBuilder(List.of()).build();
+        private Map<String, IncrementalDownsamplingProgress> downsamplingProgress;
 
         private Builder(String name, List<Index> indices) {
             this(name, DataStreamIndices.backingIndicesBuilder(indices).build());
@@ -2035,6 +2053,7 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
             dataStreamOptions = dataStream.dataStreamOptions;
             backingIndices = dataStream.backingIndices;
             failureIndices = dataStream.failureIndices;
+            downsamplingProgress = dataStream.downsamplingProgress;
         }
 
         public Builder setTimeProvider(LongSupplier timeProvider) {
@@ -2097,6 +2116,11 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
             return this;
         }
 
+        public Builder setDownsamplingProgress(Map<String, IncrementalDownsamplingProgress> downsamplingProgress) {
+            this.downsamplingProgress = downsamplingProgress;
+            return this;
+        }
+
         public Builder setDataStreamOptions(DataStreamOptions dataStreamOptions) {
             this.dataStreamOptions = dataStreamOptions;
             return this;
@@ -2138,7 +2162,8 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
                 lifecycle,
                 dataStreamOptions,
                 backingIndices,
-                failureIndices
+                failureIndices,
+                downsamplingProgress
             );
         }
     }

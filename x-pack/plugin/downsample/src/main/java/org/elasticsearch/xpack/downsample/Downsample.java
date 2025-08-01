@@ -7,6 +7,8 @@
 
 package org.elasticsearch.xpack.downsample;
 
+import org.apache.lucene.util.SetOnce;
+import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.downsample.DownsampleAction;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
@@ -15,10 +17,12 @@ import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.io.stream.NamedWriteableRegistry;
 import org.elasticsearch.common.settings.ClusterSettings;
 import org.elasticsearch.common.settings.IndexScopedSettings;
+import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.settings.SettingsFilter;
 import org.elasticsearch.common.settings.SettingsModule;
 import org.elasticsearch.common.util.concurrent.EsExecutors;
+import org.elasticsearch.core.IOUtils;
 import org.elasticsearch.features.NodeFeature;
 import org.elasticsearch.persistent.PersistentTaskParams;
 import org.elasticsearch.persistent.PersistentTaskState;
@@ -35,17 +39,29 @@ import org.elasticsearch.xcontent.NamedXContentRegistry;
 import org.elasticsearch.xcontent.ParseField;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardPersistentTaskState;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardTask;
+import org.elasticsearch.xpack.downsample.incremental.IncrementalDownsamplingService;
 
+import java.io.IOException;
+import java.time.Clock;
 import java.util.Collection;
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+
+import static org.elasticsearch.xpack.downsample.incremental.IncrementalDownsamplingService.INCREMENTAL_DOWNSAMPLING_POLL_INTERVAL_SETTING;
 
 public class Downsample extends Plugin implements ActionPlugin, PersistentTaskPlugin {
 
     public static final String DOWNSAMPLE_TASK_THREAD_POOL_NAME = "downsample_indexing";
     private static final int DOWNSAMPLE_TASK_THREAD_POOL_QUEUE_SIZE = 256;
     public static final String DOWNSAMPLE_MIN_NUMBER_OF_REPLICAS_NAME = "downsample.min_number_of_replicas";
+
+    private final SetOnce<IncrementalDownsamplingService> incrementalDownsamplingService = new SetOnce<>();
+    private final Settings settings;
+
+    public Downsample(Settings settings) {
+        this.settings = settings;
+    }
 
     @Override
     public List<ExecutorBuilder<?>> getExecutorBuilders(Settings settings) {
@@ -134,6 +150,30 @@ public class Downsample extends Plugin implements ActionPlugin, PersistentTaskPl
 
     @Override
     public Collection<?> createComponents(PluginServices services) {
-        return List.of(DownsampleMetrics.class);
+        incrementalDownsamplingService.set(
+            new IncrementalDownsamplingService(
+                settings,
+                services.clusterService(),
+                services.indicesService(),
+                Clock.systemUTC(),
+                services.client()
+            )
+        );
+        incrementalDownsamplingService.get().init();
+        return List.of(DownsampleMetrics.class, incrementalDownsamplingService.get());
+    }
+
+    @Override
+    public List<Setting<?>> getSettings() {
+        return List.of(INCREMENTAL_DOWNSAMPLING_POLL_INTERVAL_SETTING);
+    }
+
+    @Override
+    public void close() throws IOException {
+        try {
+            IOUtils.close(incrementalDownsamplingService.get());
+        } catch (IOException e) {
+            throw new ElasticsearchException("unable to close the incremental downsampling service", e);
+        }
     }
 }

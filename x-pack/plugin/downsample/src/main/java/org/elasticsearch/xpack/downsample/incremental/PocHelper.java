@@ -11,25 +11,20 @@ import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRequestValidationException;
 import org.elasticsearch.action.admin.cluster.stats.MappingVisitor;
-import org.elasticsearch.action.admin.indices.create.CreateIndexClusterStateUpdateRequest;
 import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsRequest;
 import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsResponse;
 import org.elasticsearch.action.admin.indices.refresh.RefreshRequest;
 import org.elasticsearch.action.admin.indices.template.put.TransportPutComposableIndexTemplateAction;
 import org.elasticsearch.action.downsample.DownsampleConfig;
-import org.elasticsearch.action.support.ActiveShardCount;
 import org.elasticsearch.action.support.SubscribableListener;
 import org.elasticsearch.action.support.broadcast.BroadcastResponse;
 import org.elasticsearch.action.support.master.AcknowledgedResponse;
-import org.elasticsearch.action.support.master.ShardsAcknowledgedResponse;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.metadata.ComposableIndexTemplate;
 import org.elasticsearch.cluster.metadata.DataStream;
 import org.elasticsearch.cluster.metadata.DataStreamLifecycle;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.metadata.MappingMetadata;
-import org.elasticsearch.cluster.metadata.MetadataCreateIndexService;
-import org.elasticsearch.cluster.metadata.ProjectId;
 import org.elasticsearch.cluster.metadata.ProjectMetadata;
 import org.elasticsearch.cluster.metadata.Template;
 import org.elasticsearch.common.bytes.BytesReference;
@@ -69,7 +64,7 @@ import static org.elasticsearch.xpack.downsample.incremental.IncrementalDownsamp
  * This service will track and manage the incremental downsampling of data streams.
  * // TODO-ID: error tracking
  */
-public class PocIndexHelper {
+public class PocHelper {
 
     private static final DateFormatter TIMESTAMP_FORMATTER = DateFormatter.forPattern(
         "strict_date_optional_time_nanos||strict_date_optional_time||epoch_millis"
@@ -82,46 +77,21 @@ public class PocIndexHelper {
 
     private final Client client;
     private final IndicesService indicesService;
-    MetadataCreateIndexService createIndexService;
 
-    public PocIndexHelper(IndicesService indicesService, MetadataCreateIndexService createIndexService, Client client) {
+    public PocHelper(IndicesService indicesService, Client client) {
         this.client = client;
         this.indicesService = indicesService;
-        this.createIndexService = createIndexService;
-    }
-
-    public void maybeCreateDownsampleLayer(
-        ProjectMetadata project,
-        String dataStreamName,
-        DownsampleConfig downsampleConfig,
-        Index sourceIndex,
-        ActionListener<Boolean> listener
-    ) {
-        if (project.hasIndex(DataStream.getDefaultDownsampleLayerIndexName(dataStreamName, downsampleConfig.getInterval()))) {
-            listener.onResponse(true);
-            return;
-        }
-        IndexMetadata sourceIndexMetadata = project.index(sourceIndex);
-        SubscribableListener.<GetMappingsResponse>newForked(
-            l -> client.admin().indices().getMappings(new GetMappingsRequest(TimeValue.THIRTY_SECONDS).indices(sourceIndex.getName()), l)
-        )
-            .<String>andThen((l, response) -> createDownsampleIndexMapping(project, sourceIndexMetadata, response, l))
-            .<ShardsAcknowledgedResponse>andThen(
-                (l, mapping) -> createDownsamplingIndex(project.id(), dataStreamName, sourceIndexMetadata, mapping, downsampleConfig, l)
-            )
-            .andThenApply(ShardsAcknowledgedResponse::isShardsAcknowledged)
-            .addListener(listener);
     }
 
     public void maybeCreateDownsampleTemplate(
         ProjectMetadata project,
         String dataStreamName,
         Index sourceIndex,
-        ActionListener<Boolean> listener
+        ActionListener<Void> listener
     ) {
         String templateName = dataStreamName + "-downsample-template";
         if (project.templatesV2().containsKey(templateName)) {
-            listener.onResponse(true);
+            listener.onResponse(null);
             return;
         }
         IndexMetadata sourceIndexMetadata = project.index(sourceIndex);
@@ -132,7 +102,36 @@ public class PocIndexHelper {
             .<AcknowledgedResponse>andThen(
                 (l, mapping) -> createDownsamplingTemplate(templateName, dataStreamName, sourceIndexMetadata, mapping, l)
             )
-            .andThenApply(AcknowledgedResponse::isAcknowledged)
+            .<Void>andThen((l, response) -> {
+                if (response.isAcknowledged() == false) {
+                    l.onFailure(new RuntimeException("Failed to create downsample template [" + templateName + "]"));
+                } else {
+                    l.onResponse(null);
+                }
+            })
+            .addListener(listener);
+    }
+
+    public void maybeCreateDownsampleTemplate(ProjectMetadata project, String dataStreamName, ActionListener<Void> listener) {
+        String templateName = dataStreamName + "-downsample-template";
+        if (project.templatesV2().containsKey(templateName)) {
+            listener.onResponse(null);
+            return;
+        }
+        SubscribableListener.<GetMappingsResponse>newForked(
+            l -> client.admin().indices().getMappings(new GetMappingsRequest(TimeValue.THIRTY_SECONDS).indices(sourceIndex.getName()), l)
+        )
+            .<String>andThen((l, response) -> createDownsampleIndexMapping(project, sourceIndexMetadata, response, l))
+            .<AcknowledgedResponse>andThen(
+                (l, mapping) -> createDownsamplingTemplate(templateName, dataStreamName, sourceIndexMetadata, mapping, l)
+            )
+            .<Void>andThen((l, response) -> {
+                if (response.isAcknowledged() == false) {
+                    l.onFailure(new RuntimeException("Failed to create downsample template [" + templateName + "]"));
+                } else {
+                    l.onResponse(null);
+                }
+            })
             .addListener(listener);
     }
 
@@ -147,60 +146,6 @@ public class PocIndexHelper {
                 new RefreshRequest(DataStream.getDefaultDownsampleLayerIndexName(dataStreamName, downsampleConfig.getInterval())),
                 listener
             );
-    }
-
-    private void createDownsamplingIndex(
-        ProjectId projectId,
-        String dataStreamName,
-        IndexMetadata sourceIndexMetadata,
-        String mapping,
-        DownsampleConfig downsampleConfig,
-        ActionListener<ShardsAcknowledgedResponse> listener
-    ) {
-        Settings.Builder builder = Settings.builder()
-            .put(IndexMetadata.SETTING_INDEX_HIDDEN, true)
-            .put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, sourceIndexMetadata.getNumberOfShards())
-            .put(IndexMetadata.SETTING_NUMBER_OF_REPLICAS, sourceIndexMetadata.getNumberOfReplicas())
-            .put(IndexSettings.INDEX_REFRESH_INTERVAL_SETTING.getKey(), "-1")
-            .put(IndexMetadata.INDEX_DOWNSAMPLE_STATUS.getKey(), IndexMetadata.DownsampleTaskStatus.STARTED)
-            .put(IndexMetadata.INDEX_DOWNSAMPLE_INTERVAL.getKey(), DOWNSAMPLING_INTERVAL.toString())
-            .put(IndexSettings.MODE.getKey(), sourceIndexMetadata.getIndexMode())
-            .putList(IndexMetadata.INDEX_ROUTING_PATH.getKey(), sourceIndexMetadata.getRoutingPaths())
-            .put(
-                IndexSettings.TIME_SERIES_START_TIME.getKey(),
-                sourceIndexMetadata.getSettings().get(IndexSettings.TIME_SERIES_START_TIME.getKey())
-            )
-            .put(
-                IndexSettings.TIME_SERIES_END_TIME.getKey(),
-                sourceIndexMetadata.getSettings().get(IndexSettings.TIME_SERIES_END_TIME.getKey())
-            );
-        if (sourceIndexMetadata.getSettings().hasValue(MapperService.INDEX_MAPPING_TOTAL_FIELDS_LIMIT_SETTING.getKey())) {
-            builder.put(
-                MapperService.INDEX_MAPPING_TOTAL_FIELDS_LIMIT_SETTING.getKey(),
-                sourceIndexMetadata.getSettings().get(MapperService.INDEX_MAPPING_TOTAL_FIELDS_LIMIT_SETTING.getKey())
-            );
-        }
-        if (sourceIndexMetadata.getSettings().hasValue(FieldMapper.IGNORE_MALFORMED_SETTING.getKey())) {
-            builder.put(
-                FieldMapper.IGNORE_MALFORMED_SETTING.getKey(),
-                sourceIndexMetadata.getSettings().get(FieldMapper.IGNORE_MALFORMED_SETTING.getKey())
-            );
-        }
-
-        String downsampleIndexName = DataStream.getDefaultDownsampleLayerIndexName(dataStreamName, downsampleConfig.getInterval());
-        CreateIndexClusterStateUpdateRequest createIndexClusterStateUpdateRequest = new CreateIndexClusterStateUpdateRequest(
-            "downsample",
-            projectId,
-            downsampleIndexName,
-            downsampleIndexName
-        ).settings(builder.build()).mappings(mapping).waitForActiveShards(ActiveShardCount.ONE);
-        createIndexService.createIndex(
-            TimeValue.THIRTY_SECONDS,
-            TimeValue.THIRTY_SECONDS,
-            TimeValue.ONE_MINUTE,
-            createIndexClusterStateUpdateRequest,
-            listener
-        );
     }
 
     private void createDownsamplingTemplate(
