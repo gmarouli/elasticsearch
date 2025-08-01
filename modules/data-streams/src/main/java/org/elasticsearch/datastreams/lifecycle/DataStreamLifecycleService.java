@@ -367,6 +367,10 @@ public class DataStreamLifecycleService implements ClusterStateListener, Closeab
                 continue;
             }
 
+            if (dataStream.isDownsampledLayer()) {
+                continue;
+            }
+
             // Retrieve the effective retention to ensure the same retention is used for this data stream
             // through all operations.
             var dataRetention = getEffectiveRetention(dataStream, globalRetentionSettings, false);

@@ -167,6 +167,7 @@ class DownsampleShardIndexer {
                     }
                 },
                 searchExecutionContext,
+                searchExecutionContext.getIndexSettings().getTimestampBounds().startTime(),
                 client
             );
             bucketCollector.preCollection();

@@ -28,6 +28,7 @@ import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexMode;
 import org.elasticsearch.index.IndexSettings;
+import org.elasticsearch.search.aggregations.bucket.histogram.DateHistogramInterval;
 import org.elasticsearch.threadpool.Scheduler;
 import org.elasticsearch.threadpool.ThreadPool;
 
@@ -125,8 +126,20 @@ public class UpdateTimeSeriesRangeService extends AbstractLifecycleComponent imp
                 continue;
             }
 
+            // TODO-ID: Layers should not be separate data streams eventually, for now we skip.
+            if (dataStream.isDownsampledLayer()) {
+                continue;
+            }
+
             // getWriteIndex() selects the latest added index:
             Index head = dataStream.getWriteIndex();
+            // TODO-ID: the write indices of the different layers should be nicer retrievable when this is correctly implemented.
+            Index head5mLayer = null;
+            if (dataStream.hasIncrementalDownsamplingEnabled()) {
+                DataStream downsampleLayer = project.dataStreams()
+                    .get(DataStream.getDefaultDownsampleLayerIndexName(dataStream.getName(), new DateHistogramInterval("5m")));
+                head5mLayer = downsampleLayer == null ? null : downsampleLayer.getWriteIndex();
+            }
             try {
                 IndexMetadata im = project.getIndexSafe(head);
                 Instant currentEnd = IndexSettings.TIME_SERIES_END_TIME.get(im.getSettings());
@@ -149,6 +162,9 @@ public class UpdateTimeSeriesRangeService extends AbstractLifecycleComponent imp
                         mBuilder = ProjectMetadata.builder(project);
                     }
                     mBuilder.updateSettings(settings, head.getName());
+                    if (head5mLayer != null) {
+                        mBuilder.updateSettings(settings, head5mLayer.getName());
+                    }
                     // Verify that all temporal ranges of each backing index is still valid:
                     dataStream.validate(mBuilder::get);
                 }
