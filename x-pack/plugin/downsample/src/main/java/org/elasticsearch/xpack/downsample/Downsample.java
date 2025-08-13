@@ -35,6 +35,8 @@ import org.elasticsearch.xcontent.NamedXContentRegistry;
 import org.elasticsearch.xcontent.ParseField;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardPersistentTaskState;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardTask;
+import org.elasticsearch.xpack.downsample.incremental.task.DataStreamDownsampler;
+import org.elasticsearch.xpack.downsample.incremental.task.DataStreamDownsamplerTaskExecutor;
 
 import java.util.Collection;
 import java.util.List;
@@ -100,7 +102,8 @@ public class Downsample extends Plugin implements ActionPlugin, PersistentTaskPl
                 DownsampleShardTask.TASK_NAME,
                 clusterService.getSettings(),
                 threadPool.executor(DOWNSAMPLE_TASK_THREAD_POOL_NAME)
-            )
+            ),
+            new DataStreamDownsamplerTaskExecutor(client, clusterService, DataStreamDownsampler.TASK_NAME, threadPool)
         );
     }
 

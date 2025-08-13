@@ -10,6 +10,7 @@
 package org.elasticsearch.cluster;
 
 import org.elasticsearch.action.admin.indices.rollover.MetadataRolloverService;
+import org.elasticsearch.action.datastreams.downsampling.DataStreamDownsamplerParams;
 import org.elasticsearch.cluster.action.index.MappingUpdatedAction;
 import org.elasticsearch.cluster.action.shard.ShardStateAction;
 import org.elasticsearch.cluster.metadata.ComponentTemplateMetadata;
@@ -69,6 +70,7 @@ import org.elasticsearch.cluster.routing.allocation.decider.ThrottlingAllocation
 import org.elasticsearch.cluster.routing.allocation.decider.WriteLoadConstraintDecider;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.io.stream.NamedWriteable;
+import org.elasticsearch.common.io.stream.NamedWriteableRegistry;
 import org.elasticsearch.common.io.stream.NamedWriteableRegistry.Entry;
 import org.elasticsearch.common.io.stream.Writeable.Reader;
 import org.elasticsearch.common.settings.ClusterSecrets;
@@ -85,6 +87,7 @@ import org.elasticsearch.indices.SystemIndices;
 import org.elasticsearch.ingest.IngestMetadata;
 import org.elasticsearch.injection.guice.AbstractModule;
 import org.elasticsearch.persistent.ClusterPersistentTasksCustomMetadata;
+import org.elasticsearch.persistent.PersistentTaskParams;
 import org.elasticsearch.persistent.PersistentTasksCustomMetadata;
 import org.elasticsearch.persistent.PersistentTasksNodeService;
 import org.elasticsearch.plugins.ClusterPlugin;
@@ -308,6 +311,10 @@ public class ClusterModule extends AbstractModule {
         // Streams
         registerProjectCustom(entries, StreamsMetadata.TYPE, StreamsMetadata::new, StreamsMetadata::readDiffFrom);
 
+        entries.add(
+            new NamedWriteableRegistry.Entry(PersistentTaskParams.class, DataStreamDownsamplerParams.NAME, DataStreamDownsamplerParams::new)
+        );
+
         return entries;
     }
 
@@ -386,6 +393,13 @@ public class ClusterModule extends AbstractModule {
                 Metadata.ProjectCustom.class,
                 new ParseField(StreamsMetadata.TYPE),
                 StreamsMetadata::fromXContent
+            )
+        );
+        entries.add(
+            new NamedXContentRegistry.Entry(
+                PersistentTaskParams.class,
+                new ParseField(DataStreamDownsamplerParams.NAME),
+                DataStreamDownsamplerParams::fromXContent
             )
         );
         return entries;

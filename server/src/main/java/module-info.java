@@ -130,6 +130,7 @@ module org.elasticsearch.server {
     exports org.elasticsearch.action.admin.indices.validate.query;
     exports org.elasticsearch.action.bulk;
     exports org.elasticsearch.action.datastreams;
+    exports org.elasticsearch.action.datastreams.downsampling;
     exports org.elasticsearch.action.delete;
     exports org.elasticsearch.action.explain;
     exports org.elasticsearch.action.fieldcaps;
