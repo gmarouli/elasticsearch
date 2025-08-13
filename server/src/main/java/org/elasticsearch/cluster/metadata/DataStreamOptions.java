@@ -32,20 +32,21 @@ import static org.elasticsearch.cluster.metadata.DataStreamFailureStore.FAILURE_
  * supports the following configurations:
  * - failure store
  */
-public record DataStreamOptions(@Nullable DataStreamFailureStore failureStore)
+public record DataStreamOptions(@Nullable DataStreamFailureStore failureStore, @Nullable DataStreamDownsampling dataStreamDownsampling)
     implements
         SimpleDiffable<DataStreamOptions>,
         ToXContentObject {
 
     public static final ParseField FAILURE_STORE_FIELD = new ParseField(FAILURE_STORE);
-    public static final DataStreamOptions FAILURE_STORE_ENABLED = new DataStreamOptions(new DataStreamFailureStore(true, null));
-    public static final DataStreamOptions FAILURE_STORE_DISABLED = new DataStreamOptions(new DataStreamFailureStore(false, null));
-    public static final DataStreamOptions EMPTY = new DataStreamOptions(null);
+    public static final ParseField DOWNSAMPLING_FIELD = new ParseField("downsampling");
+    public static final DataStreamOptions FAILURE_STORE_ENABLED = new DataStreamOptions(new DataStreamFailureStore(true, null), null);
+    public static final DataStreamOptions FAILURE_STORE_DISABLED = new DataStreamOptions(new DataStreamFailureStore(false, null), null);
+    public static final DataStreamOptions EMPTY = new DataStreamOptions(null, null);
 
     public static final ConstructingObjectParser<DataStreamOptions, Void> PARSER = new ConstructingObjectParser<>(
         "options",
         false,
-        (args, unused) -> new DataStreamOptions((DataStreamFailureStore) args[0])
+        (args, unused) -> new DataStreamOptions((DataStreamFailureStore) args[0], (DataStreamDownsampling) args[0])
     );
 
     static {
@@ -54,10 +55,24 @@ public record DataStreamOptions(@Nullable DataStreamFailureStore failureStore)
             (p, c) -> DataStreamFailureStore.fromXContent(p),
             FAILURE_STORE_FIELD
         );
+        PARSER.declareObject(
+            ConstructingObjectParser.optionalConstructorArg(),
+            (p, c) -> DataStreamDownsampling.fromXContent(p),
+            DOWNSAMPLING_FIELD
+        );
+    }
+
+    public DataStreamOptions(DataStreamFailureStore failureStore) {
+        this(failureStore, null);
     }
 
     public static DataStreamOptions read(StreamInput in) throws IOException {
-        return new DataStreamOptions(in.readOptionalWriteable(DataStreamFailureStore::new));
+        return new DataStreamOptions(
+            in.readOptionalWriteable(DataStreamFailureStore::new),
+            in.getTransportVersion().after(TransportVersions.INCREMENTAL_DOWNSAMPLING)
+                ? in.readOptionalWriteable(DataStreamDownsampling::new)
+                : null
+        );
     }
 
     public static Diff<DataStreamOptions> readDiffFrom(StreamInput in) throws IOException {
@@ -68,7 +83,7 @@ public record DataStreamOptions(@Nullable DataStreamFailureStore failureStore)
      * @return true if none of the options are defined
      */
     public boolean isEmpty() {
-        return failureStore == null;
+        return failureStore == null && dataStreamDownsampling == null;
     }
 
     @Override
@@ -83,6 +98,9 @@ public record DataStreamOptions(@Nullable DataStreamFailureStore failureStore)
             // If the enabled flag is not defined, we treat it as null.
             out.writeOptionalWriteable(null);
         }
+        if (out.getTransportVersion().onOrAfter(TransportVersions.INCREMENTAL_DOWNSAMPLING)) {
+            out.writeOptionalWriteable(dataStreamDownsampling);
+        }
     }
 
     @Override
@@ -95,6 +113,9 @@ public record DataStreamOptions(@Nullable DataStreamFailureStore failureStore)
         builder.startObject();
         if (failureStore != null) {
             builder.field(FAILURE_STORE_FIELD.getPreferredName(), failureStore);
+        }
+        if (dataStreamDownsampling != null) {
+            builder.field(DOWNSAMPLING_FIELD.getPreferredName(), dataStreamDownsampling);
         }
         builder.endObject();
         return builder;
@@ -233,7 +254,7 @@ public record DataStreamOptions(@Nullable DataStreamFailureStore failureStore)
         }
 
         public DataStreamOptions build() {
-            return new DataStreamOptions(failureStore == null ? null : failureStore.build());
+            return new DataStreamOptions(failureStore == null ? null : failureStore.build(), null);
         }
     }
 }

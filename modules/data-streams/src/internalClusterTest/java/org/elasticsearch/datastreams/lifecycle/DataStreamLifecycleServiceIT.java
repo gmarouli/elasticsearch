@@ -1070,7 +1070,8 @@ public class DataStreamLifecycleServiceIT extends ESIntegTestCase {
             TEST_REQUEST_TIMEOUT,
             TEST_REQUEST_TIMEOUT,
             new String[] { dataStreamName },
-            new DataStreamFailureStore(enabled, DataStreamLifecycle.failuresLifecycleBuilder().dataRetention(retention).build())
+            new DataStreamFailureStore(enabled, DataStreamLifecycle.failuresLifecycleBuilder().dataRetention(retention).build()),
+            null
         );
         assertAcked(client().execute(PutDataStreamOptionsAction.INSTANCE, putDataOptionsRequest));
     }

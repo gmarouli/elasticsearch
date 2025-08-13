@@ -15,6 +15,7 @@ import org.elasticsearch.action.IndicesRequest;
 import org.elasticsearch.action.support.IndicesOptions;
 import org.elasticsearch.action.support.master.AcknowledgedRequest;
 import org.elasticsearch.action.support.master.AcknowledgedResponse;
+import org.elasticsearch.cluster.metadata.DataStreamDownsampling;
 import org.elasticsearch.cluster.metadata.DataStreamFailureStore;
 import org.elasticsearch.cluster.metadata.DataStreamOptions;
 import org.elasticsearch.common.io.stream.StreamInput;
@@ -43,13 +44,13 @@ public class PutDataStreamOptionsAction {
     public static final class Request extends AcknowledgedRequest<Request> implements IndicesRequest.Replaceable {
 
         public interface Factory {
-            Request create(@Nullable DataStreamFailureStore dataStreamFailureStore);
+            Request create(@Nullable DataStreamFailureStore dataStreamFailureStore, @Nullable DataStreamDownsampling downsampling);
         }
 
         public static final ConstructingObjectParser<Request, Factory> PARSER = new ConstructingObjectParser<>(
             "put_data_stream_options_request",
             false,
-            (args, factory) -> factory.create((DataStreamFailureStore) args[0])
+            (args, factory) -> factory.create((DataStreamFailureStore) args[0], (DataStreamDownsampling) args[1])
         );
 
         static {
@@ -58,6 +59,12 @@ public class PutDataStreamOptionsAction {
                 (p, c) -> DataStreamFailureStore.PARSER.parse(p, null),
                 null,
                 new ParseField("failure_store")
+            );
+            PARSER.declareObjectOrNull(
+                ConstructingObjectParser.optionalConstructorArg(),
+                (p, c) -> DataStreamDownsampling.PARSER.parse(p, null),
+                null,
+                new ParseField("downsampling")
             );
         }
 
@@ -98,16 +105,22 @@ public class PutDataStreamOptionsAction {
             this.options = options;
         }
 
-        public Request(TimeValue masterNodeTimeout, TimeValue ackTimeout, String[] names, @Nullable DataStreamFailureStore failureStore) {
+        public Request(
+            TimeValue masterNodeTimeout,
+            TimeValue ackTimeout,
+            String[] names,
+            @Nullable DataStreamFailureStore failureStore,
+            @Nullable DataStreamDownsampling downsampling
+        ) {
             super(masterNodeTimeout, ackTimeout);
             this.names = names;
-            this.options = new DataStreamOptions(failureStore);
+            this.options = new DataStreamOptions(failureStore, downsampling);
         }
 
         @Override
         public ActionRequestValidationException validate() {
             ActionRequestValidationException validationException = null;
-            if (options.failureStore() == null) {
+            if (options.failureStore() == null && options.dataStreamDownsampling() == null) {
                 validationException = addValidationError("At least one option needs to be provided", validationException);
             }
             return validationException;
