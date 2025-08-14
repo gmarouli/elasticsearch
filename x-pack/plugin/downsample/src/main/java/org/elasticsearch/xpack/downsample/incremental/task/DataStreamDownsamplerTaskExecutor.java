@@ -25,6 +25,7 @@ import org.elasticsearch.persistent.PersistentTasksCustomMetadata;
 import org.elasticsearch.persistent.PersistentTasksExecutor;
 import org.elasticsearch.tasks.TaskId;
 import org.elasticsearch.threadpool.ThreadPool;
+import org.elasticsearch.xpack.downsample.incremental.PocHelper;
 
 import java.util.Collection;
 import java.util.Map;
@@ -52,15 +53,23 @@ public class DataStreamDownsamplerTaskExecutor extends PersistentTasksExecutor<D
     private final ThreadPool threadPool;
     private final ProjectResolver projectResolver;
     private final ConcurrentMap<String, DataStreamDownsampler> tasksInProgress = new ConcurrentHashMap<>();
+    private final PocHelper pocHelper;
     private volatile TimeValue pollInterval;
 
-    public DataStreamDownsamplerTaskExecutor(Client client, ClusterService clusterService, String taskName, ThreadPool threadPool) {
+    public DataStreamDownsamplerTaskExecutor(
+        Client client,
+        ClusterService clusterService,
+        String taskName,
+        ThreadPool threadPool,
+        PocHelper pocHelper
+    ) {
         super(taskName, threadPool.executor(DOWNSAMPLE_TASK_THREAD_POOL_NAME));
         this.client = client;
         this.clusterService = clusterService;
         this.threadPool = threadPool;
         this.projectResolver = client.projectResolver();
         this.pollInterval = POLL_INTERVAL_SETTING.get(clusterService.getSettings());
+        this.pocHelper = pocHelper;
     }
 
     /**
@@ -104,7 +113,8 @@ public class DataStreamDownsamplerTaskExecutor extends PersistentTasksExecutor<D
             action,
             "Creating data stream downsampling task for " + taskInProgress.getParams().dataStream(),
             parentTaskId,
-            headers
+            headers,
+            pocHelper
         );
     }
 

@@ -7,6 +7,7 @@
 
 package org.elasticsearch.xpack.downsample;
 
+import org.apache.lucene.util.SetOnce;
 import org.elasticsearch.action.downsample.DownsampleAction;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
@@ -35,6 +36,7 @@ import org.elasticsearch.xcontent.NamedXContentRegistry;
 import org.elasticsearch.xcontent.ParseField;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardPersistentTaskState;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardTask;
+import org.elasticsearch.xpack.downsample.incremental.PocHelper;
 import org.elasticsearch.xpack.downsample.incremental.task.DataStreamDownsampler;
 import org.elasticsearch.xpack.downsample.incremental.task.DataStreamDownsamplerTaskExecutor;
 
@@ -48,6 +50,8 @@ public class Downsample extends Plugin implements ActionPlugin, PersistentTaskPl
     public static final String DOWNSAMPLE_TASK_THREAD_POOL_NAME = "downsample_indexing";
     private static final int DOWNSAMPLE_TASK_THREAD_POOL_QUEUE_SIZE = 256;
     public static final String DOWNSAMPLE_MIN_NUMBER_OF_REPLICAS_NAME = "downsample.min_number_of_replicas";
+
+    private final SetOnce<PocHelper> pocHelper = new SetOnce<>();
 
     @Override
     public List<ExecutorBuilder<?>> getExecutorBuilders(Settings settings) {
@@ -103,7 +107,7 @@ public class Downsample extends Plugin implements ActionPlugin, PersistentTaskPl
                 clusterService.getSettings(),
                 threadPool.executor(DOWNSAMPLE_TASK_THREAD_POOL_NAME)
             ),
-            new DataStreamDownsamplerTaskExecutor(client, clusterService, DataStreamDownsampler.TASK_NAME, threadPool)
+            new DataStreamDownsamplerTaskExecutor(client, clusterService, DataStreamDownsampler.TASK_NAME, threadPool, pocHelper.get())
         );
     }
 
@@ -137,6 +141,7 @@ public class Downsample extends Plugin implements ActionPlugin, PersistentTaskPl
 
     @Override
     public Collection<?> createComponents(PluginServices services) {
-        return List.of(DownsampleMetrics.class);
+        pocHelper.set(new PocHelper(services.indicesService(), services.client()));
+        return List.of(DownsampleMetrics.class, pocHelper);
     }
 }
