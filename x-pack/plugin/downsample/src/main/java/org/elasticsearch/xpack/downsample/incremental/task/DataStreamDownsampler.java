@@ -10,9 +10,15 @@ package org.elasticsearch.xpack.downsample.incremental.task;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsRequest;
+import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsResponse;
+import org.elasticsearch.action.admin.indices.refresh.RefreshRequest;
 import org.elasticsearch.action.datastreams.downsampling.DataStreamDownsamplerParams;
+import org.elasticsearch.action.downsample.DownsampleConfig;
 import org.elasticsearch.action.support.RefCountingListener;
 import org.elasticsearch.action.support.SubscribableListener;
+import org.elasticsearch.action.support.broadcast.BroadcastResponse;
+import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.DataStream;
 import org.elasticsearch.cluster.metadata.DataStreamDownsampling;
@@ -31,6 +37,8 @@ import org.elasticsearch.tasks.TaskId;
 import org.elasticsearch.threadpool.Scheduler;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xpack.downsample.incremental.PocHelper;
+import org.elasticsearch.xpack.downsample.incremental.ShardDownsampleRequest;
+import org.elasticsearch.xpack.downsample.incremental.TransportShardDownsampleAction;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -46,9 +54,8 @@ import static org.elasticsearch.xpack.downsample.Downsample.DOWNSAMPLE_TASK_THRE
  * for the relevant time ranges.
  * TODO:
  * - Error handling
- * - Using the previous layer
  * - Stopping gracefully
- * - Tracking progress
+ * - Persist progress tracking
  */
 public class DataStreamDownsampler extends AllocatedPersistentTask {
     private static final Logger logger = LogManager.getLogger(DataStreamDownsampler.class);
@@ -64,6 +71,7 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
     private final ConcurrentMap<String, Long> lastDownsampledTime = new ConcurrentHashMap<>();
     private final PocHelper pocHelper;
     private final Supplier<Long> nowSupplier;
+    private final Client client;
     private volatile Scheduler.ScheduledCancellable scheduled;
 
     public DataStreamDownsampler(
@@ -78,7 +86,8 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
         String description,
         TaskId parentTask,
         Map<String, String> headers,
-        PocHelper pocHelper
+        PocHelper pocHelper,
+        Client client
     ) {
         super(id, type, action, description, parentTask, headers);
         this.projectId = projectId;
@@ -88,6 +97,7 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
         this.pollIntervalSupplier = pollIntervalSupplier;
         this.pocHelper = pocHelper;
         this.nowSupplier = System::currentTimeMillis;
+        this.client = client;
     }
 
     void runDataStreamDownsampler() {
@@ -95,6 +105,7 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
         if (isCancelled() || isCompleted()) {
             return;
         }
+        // TODO: We should have a health indicator to ensure it runs promptly
         RunOnce scheduleOnce = new RunOnce(() -> scheduleNextRun(pollIntervalSupplier.get()));
         try {
             ClusterState clusterState = clusterService.state();
@@ -122,10 +133,12 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
                     ? dataStream
                     : projectMetadata.dataStreams()
                         .get(DataStream.getDefaultDownsampleLayerIndexName(dataStreamName, previousLayer.interval()));
+                // TODO if the "previous" layer does not have the data we need, we should fallback to the layer before that.
                 if (sourceDataStream == null) {
-                    logger.error(
-                        "Source data stream [{}] does not exist",
-                        DataStream.getDefaultDownsampleLayerIndexName(dataStreamName, previousLayer.interval())
+                    logger.debug(
+                        "Source data stream [{}] does not exist, downsampling layer [{}] is skipped.",
+                        DataStream.getDefaultDownsampleLayerIndexName(dataStreamName, previousLayer.interval()),
+                        layer.interval()
                     );
                     continue;
                 }
@@ -174,11 +187,22 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
         long now,
         ActionListener<Void> listener
     ) {
-        logger.info("Going to downsample the data stream [{}] for the interval [{}]", dataStreamName, layer.interval());
+        logger.info("Downsampling data stream [{}] for the interval [{}]", dataStreamName, layer.interval());
         SubscribableListener.<Void>newForked(
             l -> pocHelper.maybeCreateDownsampleLayer(projectMetadata, dataStreamName, layer.interval(), l)
         )
-            .<Void>andThen(l -> downsampleLayer(clusterState, projectMetadata, sourceLayer, previousLayer, now, layer, l))
+            .<Void>andThen(
+                l -> downsampleLayer(
+                    clusterState,
+                    projectMetadata,
+                    sourceLayer,
+                    DataStream.getDefaultDownsampleLayerIndexName(dataStreamName, layer.interval()),
+                    previousLayer,
+                    now,
+                    layer,
+                    l
+                )
+            )
             .addListener(listener);
     }
 
@@ -186,13 +210,14 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
         ClusterState clusterState,
         ProjectMetadata projectMetadata,
         DataStream sourceDataStream,
+        String targetLayer,
         DataStreamDownsampling.DownsampledLayer previousLayer,
         Long now,
         DataStreamDownsampling.DownsampledLayer layer,
         ActionListener<Void> listener
     ) {
         if (previousLayer != null && lastDownsampledTime.containsKey(previousLayer.interval().toString()) == false) {
-            logger.info("Previous downsampling layer [{}] hasn't started yet for {}", previousLayer.interval(), dataStreamName);
+            logger.debug("Previous downsampling layer [{}] hasn't completed downsampling {}", previousLayer.interval(), dataStreamName);
             listener.onResponse(null);
             return;
         }
@@ -214,9 +239,10 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
             listener.onResponse(null);
             return;
         }
+        DownsampleConfig downsampleConfig = new DownsampleConfig(layer.interval());
         try (RefCountingListener refCountingListener = new RefCountingListener(listener.safeMap(ignored -> {
             lastDownsampledTime.put(layer.interval().toString(), endTime);
-            logger.info("Layer [{}-{}] is updated to {}", dataStreamName, layer.interval(), Instant.ofEpochMilli(endTime));
+            logger.info("Layer [{}-{}] completed downsampling up to {}", dataStreamName, layer.interval(), Instant.ofEpochMilli(endTime));
             return null;
         }))) {
             for (int i = sourceDataStream.getIndices().size() - 1; i >= 0; i--) {
@@ -225,51 +251,87 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
                 long indexStartTime = indexMetadata.getTimeSeriesStart().toEpochMilli();
                 long indexEndTime = indexMetadata.getTimeSeriesEnd().toEpochMilli();
                 if (timeOverlap(indexStartTime, indexEndTime, startTime, endTime) == false) {
-                    logger.info("Skipping index {} no overlap", sourceIndex);
+                    logger.debug("Skipping index {} no overlap", sourceIndex);
                     continue;
                 }
                 // We need to ensure the downsampling range is within the index bounds
                 var downsampleStartTime = startTime == null ? indexStartTime : Math.max(indexStartTime, startTime);
                 var downsampleEndTime = Math.min(endTime, indexEndTime);
-                downsampleIndexForLayer(
-                    clusterState,
-                    layer,
-                    sourceIndex,
-                    downsampleStartTime,
-                    downsampleEndTime,
-                    refCountingListener.acquire()
-                );
+                SubscribableListener.<BroadcastResponse>newForked(
+                    l -> client.admin().indices().refresh(new RefreshRequest(sourceIndex.getName()), l)
+                )
+                    .<GetMappingsResponse>andThen(
+                        l -> client.admin()
+                            .indices()
+                            .getMappings(new GetMappingsRequest(TimeValue.THIRTY_SECONDS).indices(sourceIndex.getName()), l)
+                    )
+                    .andThenApply(r -> pocHelper.getFieldsPerType(downsampleConfig, indexMetadata, r))
+                    .<Void>andThen(
+                        (l, fields) -> downsampleIndexForLayer(
+                            clusterState,
+                            downsampleConfig,
+                            sourceIndex,
+                            downsampleStartTime,
+                            downsampleEndTime,
+                            targetLayer,
+                            fields.dimensions().toArray(new String[0]),
+                            fields.metrics().toArray(new String[0]),
+                            fields.labels().toArray(new String[0]),
+                            l
+                        )
+                    )
+                    .addListener(refCountingListener.acquire());
             }
         }
     }
 
     private void downsampleIndexForLayer(
         ClusterState clusterState,
-        DataStreamDownsampling.DownsampledLayer layer,
+        DownsampleConfig downsampleConfig,
         Index sourceIndex,
-        Long startTime,
-        Long endTime,
+        long startTime,
+        long endTime,
+        String targetLayer,
+        String[] dimensions,
+        String[] metrics,
+        String[] labels,
         ActionListener<Void> listener
     ) {
-        try {
+        try (RefCountingListener refCountingListener = new RefCountingListener(listener)) {
             clusterState.routingTable(projectId).index(sourceIndex).allShards().forEach(shard -> {
                 if (shard.hasSearchShards() == false) {
-                    throw new RuntimeException("shard [" + shard.shardId() + "] has no search shards");
+                    logger.error("shard [" + shard.shardId() + "] has no search shards");
+                } else {
+                    client.execute(
+                        TransportShardDownsampleAction.TYPE,
+                        new ShardDownsampleRequest(
+                            shard.shardId(),
+                            downsampleConfig,
+                            startTime,
+                            endTime,
+                            targetLayer,
+                            dimensions,
+                            metrics,
+                            labels
+                        ),
+                        refCountingListener.acquire(response -> {
+                            if (response.isAcknowledged() == false) {
+                                logger.error("[{}] failed to acknowledge downsampling shard", shard.shardId());
+                            } else {
+                                logger.info(
+                                    "{} downsampled shard {} for timeframe {} - {}, ({})",
+                                    downsampleConfig.getInterval(),
+                                    shard.shardId(),
+                                    Instant.ofEpochMilli(startTime),
+                                    Instant.ofEpochMilli(endTime),
+                                    response.getDownsampledDocs()
+                                );
+                            }
+                        })
+                    );
                 }
             });
-        } catch (RuntimeException e) {
-            listener.onFailure(e);
-            logger.error("downsample failed for {}: {}", sourceIndex.getName(), e);
-            return;
         }
-        logger.info(
-            "{} downsampled index {} for timeframe {} - {}",
-            layer.interval(),
-            sourceIndex.getName(),
-            startTime == null ? "start of time" : Instant.ofEpochMilli(startTime),
-            Instant.ofEpochMilli(endTime)
-        );
-        listener.onResponse(null);
     }
 
     private boolean timeOverlap(long indexStartTime, long indexEndTime, Long startTime, long endTime) {

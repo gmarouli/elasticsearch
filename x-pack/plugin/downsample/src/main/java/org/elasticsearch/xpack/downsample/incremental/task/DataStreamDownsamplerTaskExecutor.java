@@ -7,8 +7,6 @@
 
 package org.elasticsearch.xpack.downsample.incremental.task;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.datastreams.downsampling.DataStreamDownsamplerParams;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.ClusterState;
@@ -36,8 +34,6 @@ import java.util.concurrent.ConcurrentMap;
 import static org.elasticsearch.xpack.downsample.Downsample.DOWNSAMPLE_TASK_THREAD_POOL_NAME;
 
 public class DataStreamDownsamplerTaskExecutor extends PersistentTasksExecutor<DataStreamDownsamplerParams> {
-
-    private static final Logger logger = LogManager.getLogger(DataStreamDownsamplerTaskExecutor.class);
 
     public static final Setting<TimeValue> POLL_INTERVAL_SETTING = Setting.timeSetting(
         "data_streams.downsampling.poll.interval",
@@ -114,7 +110,8 @@ public class DataStreamDownsamplerTaskExecutor extends PersistentTasksExecutor<D
             "Creating data stream downsampling task for " + taskInProgress.getParams().dataStream(),
             parentTaskId,
             headers,
-            pocHelper
+            pocHelper,
+            client
         );
     }
 
@@ -145,14 +142,5 @@ public class DataStreamDownsamplerTaskExecutor extends PersistentTasksExecutor<D
         DataStreamDownsampler dataStreamDownsampler = (DataStreamDownsampler) task;
         tasksInProgress.put(params.dataStream(), dataStreamDownsampler);
         dataStreamDownsampler.runDataStreamDownsampler();
-    }
-
-    private TimeValue getTimeToLive(long completionTimeInMillis) {
-        return TimeValue.timeValueMillis(
-            TASK_KEEP_ALIVE_TIME.millis() - Math.min(
-                TASK_KEEP_ALIVE_TIME.millis(),
-                threadPool.absoluteTimeInMillis() - completionTimeInMillis
-            )
-        );
     }
 }

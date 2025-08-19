@@ -37,6 +37,7 @@ import org.elasticsearch.xcontent.ParseField;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardPersistentTaskState;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardTask;
 import org.elasticsearch.xpack.downsample.incremental.PocHelper;
+import org.elasticsearch.xpack.downsample.incremental.TransportShardDownsampleAction;
 import org.elasticsearch.xpack.downsample.incremental.task.DataStreamDownsampler;
 import org.elasticsearch.xpack.downsample.incremental.task.DataStreamDownsamplerTaskExecutor;
 
@@ -73,7 +74,8 @@ public class Downsample extends Plugin implements ActionPlugin, PersistentTaskPl
             new ActionHandler(
                 DownsampleShardPersistentTaskExecutor.DelegatingAction.INSTANCE,
                 DownsampleShardPersistentTaskExecutor.DelegatingAction.TA.class
-            )
+            ),
+            new ActionHandler(TransportShardDownsampleAction.TYPE, TransportShardDownsampleAction.class)
         );
     }
 

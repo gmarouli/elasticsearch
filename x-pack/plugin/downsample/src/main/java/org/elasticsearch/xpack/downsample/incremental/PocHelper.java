@@ -13,12 +13,10 @@ import org.elasticsearch.action.ActionRequestValidationException;
 import org.elasticsearch.action.admin.cluster.stats.MappingVisitor;
 import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsRequest;
 import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsResponse;
-import org.elasticsearch.action.admin.indices.refresh.RefreshRequest;
 import org.elasticsearch.action.admin.indices.template.put.TransportPutComposableIndexTemplateAction;
 import org.elasticsearch.action.datastreams.CreateDataStreamAction;
 import org.elasticsearch.action.downsample.DownsampleConfig;
 import org.elasticsearch.action.support.SubscribableListener;
-import org.elasticsearch.action.support.broadcast.BroadcastResponse;
 import org.elasticsearch.action.support.master.AcknowledgedResponse;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.metadata.ComposableIndexTemplate;
@@ -57,7 +55,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import static org.elasticsearch.index.mapper.TimeSeriesParams.TIME_SERIES_DIMENSION_PARAM;
 import static org.elasticsearch.index.mapper.TimeSeriesParams.TIME_SERIES_METRIC_PARAM;
 
 /**
@@ -140,19 +137,6 @@ public class PocHelper {
                 }
             })
             .addListener(listener);
-    }
-
-    public void refreshDownsampleLayer(
-        String dataStreamName,
-        DownsampleConfig downsampleConfig,
-        ActionListener<BroadcastResponse> listener
-    ) {
-        client.admin()
-            .indices()
-            .refresh(
-                new RefreshRequest(DataStream.getDefaultDownsampleLayerIndexName(dataStreamName, downsampleConfig.getInterval())),
-                listener
-            );
     }
 
     private void createDownsamplingTemplate(
@@ -402,8 +386,11 @@ public class PocHelper {
             .endArray();
     }
 
-    FieldsPerType getFieldsPerType(DownsampleConfig downsampleConfig, IndexMetadata indexMetadata, GetMappingsResponse getMappingsResponse)
-        throws IOException {
+    public FieldsPerType getFieldsPerType(
+        DownsampleConfig downsampleConfig,
+        IndexMetadata indexMetadata,
+        GetMappingsResponse getMappingsResponse
+    ) throws IOException {
         Index index = indexMetadata.getIndex();
         final Map<String, Object> sourceIndexMappings = getMappingsResponse.mappings().get(index.getName()).getSourceAsMap();
         if (sourceIndexMappings == null) {
@@ -427,7 +414,7 @@ public class PocHelper {
             var flattenedDimensions = helper.extractFlattenedDimensions(field, mapping);
             if (flattenedDimensions != null) {
                 dimensions.addAll(flattenedDimensions);
-            } else if (Boolean.TRUE.equals(mapping.get(TIME_SERIES_DIMENSION_PARAM))) {
+            } else if (helper.isTimeSeriesDimension(field, mapping)) {
                 dimensions.add(field);
             } else if (helper.isTimeSeriesMetric(field, mapping)) {
                 metrics.add(field);
@@ -487,7 +474,7 @@ public class PocHelper {
         }
     }
 
-    record FieldsPerType(List<String> dimensions, List<String> metrics, List<String> labels) {}
+    public record FieldsPerType(List<String> dimensions, List<String> metrics, List<String> labels) {}
 
     // public for testing
     public record AggregateMetricDoubleFieldSupportedMetrics(String defaultMetric, List<String> supportedMetrics) {}
