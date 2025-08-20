@@ -36,6 +36,7 @@ import org.elasticsearch.xcontent.NamedXContentRegistry;
 import org.elasticsearch.xcontent.ParseField;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardPersistentTaskState;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardTask;
+import org.elasticsearch.xpack.downsample.incremental.DownsampleLayersUpdateStateService;
 import org.elasticsearch.xpack.downsample.incremental.PocHelper;
 import org.elasticsearch.xpack.downsample.incremental.TransportShardDownsampleAction;
 import org.elasticsearch.xpack.downsample.incremental.task.DataStreamDownsampler;
@@ -53,6 +54,7 @@ public class Downsample extends Plugin implements ActionPlugin, PersistentTaskPl
     public static final String DOWNSAMPLE_MIN_NUMBER_OF_REPLICAS_NAME = "downsample.min_number_of_replicas";
 
     private final SetOnce<PocHelper> pocHelper = new SetOnce<>();
+    private final SetOnce<DownsampleLayersUpdateStateService> downsampleLayersUpdateStateService = new SetOnce<>();
 
     @Override
     public List<ExecutorBuilder<?>> getExecutorBuilders(Settings settings) {
@@ -109,7 +111,14 @@ public class Downsample extends Plugin implements ActionPlugin, PersistentTaskPl
                 clusterService.getSettings(),
                 threadPool.executor(DOWNSAMPLE_TASK_THREAD_POOL_NAME)
             ),
-            new DataStreamDownsamplerTaskExecutor(client, clusterService, DataStreamDownsampler.TASK_NAME, threadPool, pocHelper.get())
+            new DataStreamDownsamplerTaskExecutor(
+                client,
+                clusterService,
+                DataStreamDownsampler.TASK_NAME,
+                threadPool,
+                pocHelper.get(),
+                downsampleLayersUpdateStateService.get()
+            )
         );
     }
 
@@ -143,6 +152,7 @@ public class Downsample extends Plugin implements ActionPlugin, PersistentTaskPl
 
     @Override
     public Collection<?> createComponents(PluginServices services) {
+        downsampleLayersUpdateStateService.set(new DownsampleLayersUpdateStateService(services.clusterService()));
         pocHelper.set(new PocHelper(services.indicesService(), services.client()));
         return List.of(DownsampleMetrics.class, pocHelper);
     }

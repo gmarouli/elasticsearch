@@ -33,7 +33,7 @@ import org.elasticsearch.xpack.downsample.TimeSeriesBucketCollector;
 import java.io.Closeable;
 import java.io.IOException;
 import java.time.Instant;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -251,20 +251,31 @@ class IncrementalDownsampleShardIndexer {
                 long bulkTookMillis = response.getTook().getMillis();
                 numIndexed.addAndGet(request.numberOfActions());
                 if (response.hasFailures()) {
-                    List<BulkItemResponse> failedItems = Arrays.stream(response.getItems()).filter(BulkItemResponse::isFailed).toList();
-                    numFailed.addAndGet(failedItems.size());
+                    List<BulkItemResponse> failedItems = new ArrayList<>(response.getItems().length);
+                    for (BulkItemResponse item : response.getItems()) {
+                        if (item.isFailed()) {
+                            if (item.status().getStatus() != 409) {
+                                logger.debug("Document [{}] has been previously indexed.", item.getId());
+                                numIndexed.addAndGet(1);
+                            } else {
+                                failedItems.add(item);
+                            }
+                        }
+                    }
+                    if (failedItems.isEmpty() == false) {
+                        numFailed.addAndGet(failedItems.size());
+                        Map<String, String> failures = failedItems.stream()
+                            .collect(
+                                Collectors.toMap(
+                                    BulkItemResponse::getId,
+                                    BulkItemResponse::getFailureMessage,
+                                    (msg1, msg2) -> Objects.equals(msg1, msg2) ? msg1 : msg1 + "," + msg2
+                                )
+                            );
+                        logger.error("Shard [{}] failed to populate downsample index. Failures: [{}]", sourceShard.shardId(), failures);
 
-                    Map<String, String> failures = failedItems.stream()
-                        .collect(
-                            Collectors.toMap(
-                                BulkItemResponse::getId,
-                                BulkItemResponse::getFailureMessage,
-                                (msg1, msg2) -> Objects.equals(msg1, msg2) ? msg1 : msg1 + "," + msg2
-                            )
-                        );
-                    logger.error("Shard [{}] failed to populate downsample index. Failures: [{}]", sourceShard.shardId(), failures);
-
-                    abort.set(true);
+                        abort.set(true);
+                    }
                 }
             }
 

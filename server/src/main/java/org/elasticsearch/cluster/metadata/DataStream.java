@@ -65,6 +65,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -172,6 +173,7 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
 
     private final DataStreamIndices backingIndices;
     private final DataStreamIndices failureIndices;
+    private final Map<String, Long> lastDownsampledTimestamp;
 
     // visible for testing
     public DataStream(
@@ -249,7 +251,8 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
                 List.copyOf(failureIndices),
                 (replicated == false && failureIndices.isEmpty()),
                 null
-            )
+            ),
+            Map.of()
         );
     }
 
@@ -268,7 +271,8 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
         DataStreamLifecycle lifecycle,
         DataStreamOptions dataStreamOptions,
         DataStreamIndices backingIndices,
-        DataStreamIndices failureIndices
+        DataStreamIndices failureIndices,
+        Map<String, Long> lastDownsampledTimestamp
     ) {
         this.name = name;
         this.generation = generation;
@@ -291,6 +295,7 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
             : "replicated data streams cannot be marked for lazy rollover";
         this.backingIndices = backingIndices;
         this.failureIndices = failureIndices;
+        this.lastDownsampledTimestamp = lastDownsampledTimestamp;
     }
 
     public static DataStream read(StreamInput in) throws IOException {
@@ -349,6 +354,10 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
         } else {
             mappings = EMPTY_MAPPINGS;
         }
+        Map<String, Long> latestDownsampledTimestamp = Map.of();
+        if (in.getTransportVersion().onOrAfter(TransportVersions.INCREMENTAL_DOWNSAMPLING)) {
+            latestDownsampledTimestamp = in.readImmutableMap(StreamInput::readString, StreamInput::readVLong);
+        }
         return new DataStream(
             name,
             generation,
@@ -364,7 +373,8 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
             lifecycle,
             dataStreamOptions,
             backingIndicesBuilder.build(),
-            failureIndicesBuilder.build()
+            failureIndicesBuilder.build(),
+            latestDownsampledTimestamp
         );
     }
 
@@ -514,6 +524,10 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
 
     private ComposableIndexTemplate getMatchingIndexTemplate(ProjectMetadata projectMetadata) {
         return lookupTemplateForDataStream(name, projectMetadata);
+    }
+
+    public Map<String, Long> getLastDownsampledTimestamp() {
+        return lastDownsampledTimestamp;
     }
 
     /**
@@ -1490,6 +1504,9 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
         if (out.getTransportVersion().onOrAfter(TransportVersions.MAPPINGS_IN_DATA_STREAMS)) {
             mappings.writeTo(out);
         }
+        if (out.getTransportVersion().onOrAfter(TransportVersions.INCREMENTAL_DOWNSAMPLING)) {
+            out.writeMap(lastDownsampledTimestamp, StreamOutput::writeString, StreamOutput::writeVLong);
+        }
     }
 
     public static final ParseField NAME_FIELD = new ParseField("name");
@@ -1513,6 +1530,7 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
     public static final ParseField DATA_STREAM_OPTIONS_FIELD = new ParseField("options");
     public static final ParseField SETTINGS_FIELD = new ParseField("settings");
     public static final ParseField MAPPINGS_FIELD = new ParseField("mappings");
+    public static final ParseField DOWNSAMPLED_LAYERS_FIELD = new ParseField("downsample_layers");
 
     @SuppressWarnings("unchecked")
     private static final ConstructingObjectParser<DataStream, Void> PARSER = new ConstructingObjectParser<>(
@@ -1546,7 +1564,8 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
                 ((args[5] == null || ((boolean) args[5] == false)) && (args[13] == null || ((List<Index>) args[13]).isEmpty()))
                     || (args[14] != null && (boolean) args[14]),
                 (DataStreamAutoShardingEvent) args[15]
-            )
+            ),
+            (Map<String, Long>) args[19]
         )
     );
 
@@ -1604,6 +1623,7 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
             MAPPINGS_FIELD,
             ObjectParser.ValueType.VALUE_OBJECT_ARRAY
         );
+        PARSER.declareObject(ConstructingObjectParser.optionalConstructorArg(), (p, c) -> p.mapOrdered(), DOWNSAMPLED_LAYERS_FIELD);
     }
 
     public static DataStream fromXContent(XContentParser parser) throws IOException {
@@ -1681,6 +1701,10 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
         } else {
             builder.field(MAPPINGS_FIELD.getPreferredName(), mappings.compressed());
         }
+        if (lastDownsampledTimestamp.isEmpty() == false) {
+            builder.field(DOWNSAMPLED_LAYERS_FIELD.getPreferredName());
+            builder.map(lastDownsampledTimestamp);
+        }
 
         builder.endObject();
         return builder;
@@ -1704,7 +1728,8 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
             && Objects.equals(lifecycle, that.lifecycle)
             && Objects.equals(dataStreamOptions, that.dataStreamOptions)
             && Objects.equals(backingIndices, that.backingIndices)
-            && Objects.equals(failureIndices, that.failureIndices);
+            && Objects.equals(failureIndices, that.failureIndices)
+            && Objects.equals(lastDownsampledTimestamp, that.lastDownsampledTimestamp);
     }
 
     @Override
@@ -1723,7 +1748,8 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
             lifecycle,
             dataStreamOptions,
             backingIndices,
-            failureIndices
+            failureIndices,
+            lastDownsampledTimestamp
         );
     }
 
@@ -2048,6 +2074,7 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
         private DataStreamOptions dataStreamOptions = DataStreamOptions.EMPTY;
         private DataStreamIndices backingIndices;
         private DataStreamIndices failureIndices = DataStreamIndices.failureIndicesBuilder(List.of()).build();
+        private Map<String, Long> lastDownsampledTimestamp = new HashMap<>();
 
         private Builder(String name, List<Index> indices) {
             this(name, DataStreamIndices.backingIndicesBuilder(indices).build());
@@ -2075,6 +2102,7 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
             dataStreamOptions = dataStream.dataStreamOptions;
             backingIndices = dataStream.backingIndices;
             failureIndices = dataStream.failureIndices;
+            lastDownsampledTimestamp = new HashMap<>(dataStream.lastDownsampledTimestamp);
         }
 
         public Builder setTimeProvider(LongSupplier timeProvider) {
@@ -2162,6 +2190,16 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
             return this;
         }
 
+        public Builder setLastDownsampledTimestamp(Map<String, Long> lastDownsampledTimestamp) {
+            this.lastDownsampledTimestamp = new HashMap<>(lastDownsampledTimestamp);
+            return this;
+        }
+
+        public Builder putLastDownsampledTimestamp(String layer, long lastDownsampledTimestamp) {
+            this.lastDownsampledTimestamp.put(layer, lastDownsampledTimestamp);
+            return this;
+        }
+
         public DataStream build() {
             return new DataStream(
                 name,
@@ -2178,7 +2216,8 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
                 lifecycle,
                 dataStreamOptions,
                 backingIndices,
-                failureIndices
+                failureIndices,
+                Collections.unmodifiableMap(lastDownsampledTimestamp)
             );
         }
     }

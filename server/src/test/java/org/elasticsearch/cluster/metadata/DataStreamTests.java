@@ -202,7 +202,8 @@ public class DataStreamTests extends AbstractXContentSerializingTestCase<DataStr
                 failureIndices,
                 failureRolloverOnWrite,
                 failureAutoShardingEvent
-            )
+            ),
+            Map.of()
         );
     }
 

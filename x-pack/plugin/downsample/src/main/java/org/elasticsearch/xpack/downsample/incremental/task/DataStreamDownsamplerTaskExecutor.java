@@ -23,6 +23,7 @@ import org.elasticsearch.persistent.PersistentTasksCustomMetadata;
 import org.elasticsearch.persistent.PersistentTasksExecutor;
 import org.elasticsearch.tasks.TaskId;
 import org.elasticsearch.threadpool.ThreadPool;
+import org.elasticsearch.xpack.downsample.incremental.DownsampleLayersUpdateStateService;
 import org.elasticsearch.xpack.downsample.incremental.PocHelper;
 
 import java.util.Collection;
@@ -50,6 +51,7 @@ public class DataStreamDownsamplerTaskExecutor extends PersistentTasksExecutor<D
     private final ProjectResolver projectResolver;
     private final ConcurrentMap<String, DataStreamDownsampler> tasksInProgress = new ConcurrentHashMap<>();
     private final PocHelper pocHelper;
+    private final DownsampleLayersUpdateStateService downsampleLayersUpdateStateService;
     private volatile TimeValue pollInterval;
 
     public DataStreamDownsamplerTaskExecutor(
@@ -57,7 +59,8 @@ public class DataStreamDownsamplerTaskExecutor extends PersistentTasksExecutor<D
         ClusterService clusterService,
         String taskName,
         ThreadPool threadPool,
-        PocHelper pocHelper
+        PocHelper pocHelper,
+        DownsampleLayersUpdateStateService downsampleLayersUpdateStateService
     ) {
         super(taskName, threadPool.executor(DOWNSAMPLE_TASK_THREAD_POOL_NAME));
         this.client = client;
@@ -66,6 +69,7 @@ public class DataStreamDownsamplerTaskExecutor extends PersistentTasksExecutor<D
         this.projectResolver = client.projectResolver();
         this.pollInterval = POLL_INTERVAL_SETTING.get(clusterService.getSettings());
         this.pocHelper = pocHelper;
+        this.downsampleLayersUpdateStateService = downsampleLayersUpdateStateService;
     }
 
     /**
@@ -111,7 +115,8 @@ public class DataStreamDownsamplerTaskExecutor extends PersistentTasksExecutor<D
             parentTaskId,
             headers,
             pocHelper,
-            client
+            client,
+            downsampleLayersUpdateStateService
         );
     }
 

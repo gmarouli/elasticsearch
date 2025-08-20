@@ -405,7 +405,8 @@ public final class DataStreamTestHelper {
                         )
                         : null
                 )
-                .build()
+                .build(),
+            Map.of()
         );
     }
 

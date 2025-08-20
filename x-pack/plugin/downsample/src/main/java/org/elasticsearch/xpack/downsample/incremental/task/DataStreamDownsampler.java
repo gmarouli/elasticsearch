@@ -18,6 +18,7 @@ import org.elasticsearch.action.downsample.DownsampleConfig;
 import org.elasticsearch.action.support.RefCountingListener;
 import org.elasticsearch.action.support.SubscribableListener;
 import org.elasticsearch.action.support.broadcast.BroadcastResponse;
+import org.elasticsearch.action.support.master.AcknowledgedResponse;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.DataStream;
@@ -36,6 +37,7 @@ import org.elasticsearch.search.aggregations.bucket.histogram.DateHistogramInter
 import org.elasticsearch.tasks.TaskId;
 import org.elasticsearch.threadpool.Scheduler;
 import org.elasticsearch.threadpool.ThreadPool;
+import org.elasticsearch.xpack.downsample.incremental.DownsampleLayersUpdateStateService;
 import org.elasticsearch.xpack.downsample.incremental.PocHelper;
 import org.elasticsearch.xpack.downsample.incremental.ShardDownsampleRequest;
 import org.elasticsearch.xpack.downsample.incremental.TransportShardDownsampleAction;
@@ -72,6 +74,7 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
     private final PocHelper pocHelper;
     private final Supplier<Long> nowSupplier;
     private final Client client;
+    private final DownsampleLayersUpdateStateService downsampleLayersUpdateStateService;
     private volatile Scheduler.ScheduledCancellable scheduled;
 
     public DataStreamDownsampler(
@@ -87,7 +90,8 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
         TaskId parentTask,
         Map<String, String> headers,
         PocHelper pocHelper,
-        Client client
+        Client client,
+        DownsampleLayersUpdateStateService downsampleLayersUpdateStateService
     ) {
         super(id, type, action, description, parentTask, headers);
         this.projectId = projectId;
@@ -98,6 +102,10 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
         this.pocHelper = pocHelper;
         this.nowSupplier = System::currentTimeMillis;
         this.client = client;
+        this.downsampleLayersUpdateStateService = downsampleLayersUpdateStateService;
+        lastDownsampledTime.putAll(
+            clusterService.state().projectState(projectId).metadata().dataStreams().get(dataStreamName).getLastDownsampledTimestamp()
+        );
     }
 
     void runDataStreamDownsampler() {
@@ -160,15 +168,24 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
                 previousLayer = layer;
             }
             if (subscribableListener != null) {
-                subscribableListener.addListener(ActionListener.runAfter(new ActionListener<>() {
+                subscribableListener.<AcknowledgedResponse>andThen(
+                    l -> downsampleLayersUpdateStateService.setDownsamplingLayersLastTimestamp(
+                        projectId,
+                        dataStreamName,
+                        lastDownsampledTime,
+                        TimeValue.THIRTY_SECONDS,
+                        TimeValue.THIRTY_SECONDS,
+                        l
+                    )
+                ).addListener(ActionListener.runAfter(new ActionListener<>() {
                     @Override
-                    public void onResponse(Void unused) {
+                    public void onResponse(AcknowledgedResponse unused) {
                         logger.info("Data stream [{}] is downsampled", dataStreamName);
                     }
 
                     @Override
                     public void onFailure(Exception e) {
-                        logger.info("Downsampling data stream [{}] failed, {}", dataStreamName, e);
+                        logger.error("Downsampling data stream [{}] failed, {}", dataStreamName, e);
                     }
                 }, scheduleOnce));
             }

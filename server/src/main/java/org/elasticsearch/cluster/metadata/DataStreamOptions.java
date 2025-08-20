@@ -46,7 +46,7 @@ public record DataStreamOptions(@Nullable DataStreamFailureStore failureStore, @
     public static final ConstructingObjectParser<DataStreamOptions, Void> PARSER = new ConstructingObjectParser<>(
         "options",
         false,
-        (args, unused) -> new DataStreamOptions((DataStreamFailureStore) args[0], (DataStreamDownsampling) args[0])
+        (args, unused) -> new DataStreamOptions((DataStreamFailureStore) args[0], (DataStreamDownsampling) args[1])
     );
 
     static {
