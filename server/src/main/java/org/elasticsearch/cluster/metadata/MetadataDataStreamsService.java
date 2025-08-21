@@ -40,6 +40,8 @@ import org.elasticsearch.snapshots.SnapshotInProgressException;
 import org.elasticsearch.snapshots.SnapshotsServiceUtils;
 
 import java.io.IOException;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -386,6 +388,33 @@ public class MetadataDataStreamsService {
         boolean onlyInternalDataStreams = true;
         for (var dataStreamName : dataStreamNames) {
             var dataStream = validateDataStream(project, dataStreamName);
+            List<DataStreamDownsampling.DownsampledLayer> downsampledLayers;
+            boolean changed = false;
+            if (dataStreamOptions.dataStreamDownsampling() != null) {
+                downsampledLayers = new ArrayList<>(dataStreamOptions.dataStreamDownsampling().downsampledLayers().size());
+                for (var layer : dataStreamOptions.dataStreamDownsampling().downsampledLayers()) {
+                    if (layer.startTime() == null) {
+                        Index latestIndex = project.dataStreams().get(dataStreamName).getWriteIndex();
+                        assert latestIndex != null;
+                        Instant startTime = project.index(latestIndex).getTimeSeriesStart();
+                        changed |= startTime != null;
+                        downsampledLayers.add(
+                            new DataStreamDownsampling.DownsampledLayer(
+                                layer.interval(),
+                                startTime == null ? null : startTime.toEpochMilli()
+                            )
+                        );
+                    } else {
+                        downsampledLayers.add(layer);
+                    }
+                }
+                if (changed) {
+                    dataStreamOptions = new DataStreamOptions(
+                        dataStreamOptions.failureStore(),
+                        new DataStreamDownsampling(downsampledLayers)
+                    );
+                }
+            }
             builder.put(dataStream.copy().setDataStreamOptions(dataStreamOptions).build());
             onlyInternalDataStreams = onlyInternalDataStreams && dataStream.isInternal();
         }

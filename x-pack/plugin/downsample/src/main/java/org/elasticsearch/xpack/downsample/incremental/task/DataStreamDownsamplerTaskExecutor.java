@@ -44,7 +44,6 @@ public class DataStreamDownsamplerTaskExecutor extends PersistentTasksExecutor<D
         Setting.Property.NodeScope
     );
 
-    private static final TimeValue TASK_KEEP_ALIVE_TIME = TimeValue.timeValueDays(1);
     private final Client client;
     private final ClusterService clusterService;
     private final ThreadPool threadPool;
