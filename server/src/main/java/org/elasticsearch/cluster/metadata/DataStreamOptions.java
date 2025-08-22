@@ -69,7 +69,7 @@ public record DataStreamOptions(@Nullable DataStreamFailureStore failureStore, @
     public static DataStreamOptions read(StreamInput in) throws IOException {
         return new DataStreamOptions(
             in.readOptionalWriteable(DataStreamFailureStore::new),
-            in.getTransportVersion().after(TransportVersions.INCREMENTAL_DOWNSAMPLING)
+            in.getTransportVersion().onOrAfter(TransportVersions.INCREMENTAL_DOWNSAMPLING)
                 ? in.readOptionalWriteable(DataStreamDownsampling::new)
                 : null
         );

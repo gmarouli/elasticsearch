@@ -16,6 +16,7 @@ import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.io.stream.Writeable;
 import org.elasticsearch.search.aggregations.bucket.histogram.DateHistogramInterval;
+import org.elasticsearch.xcontent.AbstractObjectParser;
 import org.elasticsearch.xcontent.ConstructingObjectParser;
 import org.elasticsearch.xcontent.ObjectParser;
 import org.elasticsearch.xcontent.ParseField;
@@ -46,7 +47,13 @@ public record DataStreamDownsampling(List<DownsampledLayer> downsampledLayers)
     );
 
     static {
-        PARSER.declareObjectArray(ConstructingObjectParser.constructorArg(), DownsampledLayer::fromXContent, LAYERS);
+        PARSER.declareField(ConstructingObjectParser.optionalConstructorArg(), (p, c) -> {
+            if (p.currentToken() == XContentParser.Token.VALUE_NULL) {
+                return null;
+            } else {
+                return AbstractObjectParser.parseArray(p, null, DownsampledLayer::fromXContent);
+            }
+        }, LAYERS, ObjectParser.ValueType.OBJECT_ARRAY);
     }
 
     public DataStreamDownsampling {
@@ -77,7 +84,11 @@ public record DataStreamDownsampling(List<DownsampledLayer> downsampledLayers)
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
         builder.startObject();
-        builder.array(LAYERS.getPreferredName(), downsampledLayers);
+        builder.startArray(LAYERS.getPreferredName());
+        for (DownsampledLayer layer : downsampledLayers) {
+            builder.value(layer);
+        }
+        builder.endArray();
         builder.endObject();
         return builder;
     }
