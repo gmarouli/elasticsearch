@@ -28,10 +28,10 @@ import java.util.Map;
 /**
  * Handles data stream modification requests.
  */
-public class DownsampleLayersUpdateStateService {
+public class DataStreamDownsampleLayersUpdateService {
     private final MasterServiceTaskQueue<UpdateDownsamplingLayersTask> updateDownsamplingLayersTaskQueue;
 
-    public DownsampleLayersUpdateStateService(ClusterService clusterService) {
+    public DataStreamDownsampleLayersUpdateService(ClusterService clusterService) {
         ClusterStateTaskExecutor<UpdateDownsamplingLayersTask> updateDownsamplingLayersExecutor =
             new SimpleBatchedAckListenerTaskExecutor<>() {
 

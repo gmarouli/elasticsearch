@@ -37,10 +37,10 @@ import org.elasticsearch.search.aggregations.bucket.histogram.DateHistogramInter
 import org.elasticsearch.tasks.TaskId;
 import org.elasticsearch.threadpool.Scheduler;
 import org.elasticsearch.threadpool.ThreadPool;
-import org.elasticsearch.xpack.downsample.incremental.DownsampleLayersUpdateStateService;
+import org.elasticsearch.xpack.downsample.incremental.DataStreamDownsampleLayersUpdateService;
+import org.elasticsearch.xpack.downsample.incremental.DownsampleShardRequest;
 import org.elasticsearch.xpack.downsample.incremental.PocHelper;
-import org.elasticsearch.xpack.downsample.incremental.ShardDownsampleRequest;
-import org.elasticsearch.xpack.downsample.incremental.TransportShardDownsampleAction;
+import org.elasticsearch.xpack.downsample.incremental.TransportDownsampleShardAction;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -74,7 +74,7 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
     private final PocHelper pocHelper;
     private final Supplier<Long> nowSupplier;
     private final Client client;
-    private final DownsampleLayersUpdateStateService downsampleLayersUpdateStateService;
+    private final DataStreamDownsampleLayersUpdateService dataStreamDownsampleLayersUpdateService;
     private volatile Scheduler.ScheduledCancellable scheduled;
 
     public DataStreamDownsampler(
@@ -91,7 +91,7 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
         Map<String, String> headers,
         PocHelper pocHelper,
         Client client,
-        DownsampleLayersUpdateStateService downsampleLayersUpdateStateService
+        DataStreamDownsampleLayersUpdateService dataStreamDownsampleLayersUpdateService
     ) {
         super(id, type, action, description, parentTask, headers);
         this.projectId = projectId;
@@ -102,7 +102,7 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
         this.pocHelper = pocHelper;
         this.nowSupplier = System::currentTimeMillis;
         this.client = client;
-        this.downsampleLayersUpdateStateService = downsampleLayersUpdateStateService;
+        this.dataStreamDownsampleLayersUpdateService = dataStreamDownsampleLayersUpdateService;
         lastDownsampledTime.putAll(
             clusterService.state().projectState(projectId).metadata().dataStreams().get(dataStreamName).getLastDownsampledTimestamp()
         );
@@ -169,7 +169,7 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
             }
             if (subscribableListener != null) {
                 subscribableListener.<AcknowledgedResponse>andThen(
-                    l -> downsampleLayersUpdateStateService.setDownsamplingLayersLastTimestamp(
+                    l -> dataStreamDownsampleLayersUpdateService.setDownsamplingLayersLastTimestamp(
                         projectId,
                         dataStreamName,
                         lastDownsampledTime,
@@ -297,6 +297,8 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
                             l
                         )
                     )
+                    .<BroadcastResponse>andThen(l -> client.admin().indices().refresh(new RefreshRequest(targetLayer), l))
+                    .<Void>andThenApply(ignored -> null)
                     .addListener(refCountingListener.acquire());
             }
         }
@@ -320,8 +322,8 @@ public class DataStreamDownsampler extends AllocatedPersistentTask {
                     logger.error("shard [" + shard.shardId() + "] has no search shards");
                 } else {
                     client.execute(
-                        TransportShardDownsampleAction.TYPE,
-                        new ShardDownsampleRequest(
+                        TransportDownsampleShardAction.TYPE,
+                        new DownsampleShardRequest(
                             shard.shardId(),
                             downsampleConfig,
                             startTime,

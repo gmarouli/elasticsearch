@@ -50,9 +50,9 @@ import static org.elasticsearch.core.Strings.format;
  * The documents collected by the {@link TimeSeriesIndexSearcher} are expected to be sorted
  * by _tsid in ascending order and @timestamp in descending order.
  */
-class IncrementalDownsampleShardIndexer {
+class DownsampleShardIndexer {
 
-    private static final Logger logger = LogManager.getLogger(IncrementalDownsampleShardIndexer.class);
+    private static final Logger logger = LogManager.getLogger(DownsampleShardIndexer.class);
     public static final int DOWNSAMPLE_BULK_ACTIONS = 10000;
     public static final ByteSizeValue DOWNSAMPLE_BULK_SIZE = ByteSizeValue.of(1, ByteSizeUnit.MB);
     public static final ByteSizeValue DOWNSAMPLE_MAX_BYTES_IN_FLIGHT = ByteSizeValue.of(50, ByteSizeUnit.MB);
@@ -72,7 +72,7 @@ class IncrementalDownsampleShardIndexer {
     ByteSizeValue downsampleBulkSize = DOWNSAMPLE_BULK_SIZE;
     ByteSizeValue downsampleMaxBytesInFlight = DOWNSAMPLE_MAX_BYTES_IN_FLIGHT;
 
-    IncrementalDownsampleShardIndexer(
+    DownsampleShardIndexer(
         final long startTime,
         final long endTime,
         final Client client,

@@ -36,9 +36,9 @@ import org.elasticsearch.xcontent.NamedXContentRegistry;
 import org.elasticsearch.xcontent.ParseField;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardPersistentTaskState;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardTask;
-import org.elasticsearch.xpack.downsample.incremental.DownsampleLayersUpdateStateService;
+import org.elasticsearch.xpack.downsample.incremental.DataStreamDownsampleLayersUpdateService;
 import org.elasticsearch.xpack.downsample.incremental.PocHelper;
-import org.elasticsearch.xpack.downsample.incremental.TransportShardDownsampleAction;
+import org.elasticsearch.xpack.downsample.incremental.TransportDownsampleShardAction;
 import org.elasticsearch.xpack.downsample.incremental.task.DataStreamDownsampler;
 import org.elasticsearch.xpack.downsample.incremental.task.DataStreamDownsamplerTaskExecutor;
 
@@ -54,7 +54,7 @@ public class Downsample extends Plugin implements ActionPlugin, PersistentTaskPl
     public static final String DOWNSAMPLE_MIN_NUMBER_OF_REPLICAS_NAME = "downsample.min_number_of_replicas";
 
     private final SetOnce<PocHelper> pocHelper = new SetOnce<>();
-    private final SetOnce<DownsampleLayersUpdateStateService> downsampleLayersUpdateStateService = new SetOnce<>();
+    private final SetOnce<DataStreamDownsampleLayersUpdateService> downsampleLayersUpdateStateService = new SetOnce<>();
 
     @Override
     public List<ExecutorBuilder<?>> getExecutorBuilders(Settings settings) {
@@ -77,7 +77,7 @@ public class Downsample extends Plugin implements ActionPlugin, PersistentTaskPl
                 DownsampleShardPersistentTaskExecutor.DelegatingAction.INSTANCE,
                 DownsampleShardPersistentTaskExecutor.DelegatingAction.TA.class
             ),
-            new ActionHandler(TransportShardDownsampleAction.TYPE, TransportShardDownsampleAction.class)
+            new ActionHandler(TransportDownsampleShardAction.TYPE, TransportDownsampleShardAction.class)
         );
     }
 
@@ -152,7 +152,7 @@ public class Downsample extends Plugin implements ActionPlugin, PersistentTaskPl
 
     @Override
     public Collection<?> createComponents(PluginServices services) {
-        downsampleLayersUpdateStateService.set(new DownsampleLayersUpdateStateService(services.clusterService()));
+        downsampleLayersUpdateStateService.set(new DataStreamDownsampleLayersUpdateService(services.clusterService()));
         pocHelper.set(new PocHelper(services.indicesService(), services.client()));
         return List.of(DownsampleMetrics.class, pocHelper);
     }

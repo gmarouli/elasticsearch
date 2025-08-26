@@ -13,18 +13,18 @@ import org.elasticsearch.index.shard.ShardId;
 
 import java.io.IOException;
 
-public class ShardDownsampleResponse extends AcknowledgedResponse {
+public class DownsampleShardResponse extends AcknowledgedResponse {
 
     private final ShardId shardId;
     private final long downsampledDocs;
 
-    protected ShardDownsampleResponse(StreamInput in) throws IOException {
+    protected DownsampleShardResponse(StreamInput in) throws IOException {
         super(in);
         shardId = new ShardId(in);
         downsampledDocs = in.readVLong();
     }
 
-    protected ShardDownsampleResponse(boolean acknowledged, ShardId shardId, long downsampledDocs) {
+    protected DownsampleShardResponse(boolean acknowledged, ShardId shardId, long downsampledDocs) {
         super(acknowledged);
         this.shardId = shardId;
         this.downsampledDocs = downsampledDocs;

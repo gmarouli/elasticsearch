@@ -19,7 +19,7 @@ import java.io.IOException;
 /**
  * A request to incrementally downsample a shard for specified time range and interval.
  */
-public class ShardDownsampleRequest extends SingleShardRequest<ShardDownsampleRequest> {
+public class DownsampleShardRequest extends SingleShardRequest<DownsampleShardRequest> {
 
     private final DownsampleConfig downsampleConfig;
     private final long startTime;
@@ -30,7 +30,7 @@ public class ShardDownsampleRequest extends SingleShardRequest<ShardDownsampleRe
     final String[] metrics;
     final String[] labels;
 
-    public ShardDownsampleRequest(
+    public DownsampleShardRequest(
         ShardId shardId,
         DownsampleConfig downsampleConfig,
         long startTime,
@@ -51,7 +51,7 @@ public class ShardDownsampleRequest extends SingleShardRequest<ShardDownsampleRe
         this.labels = labels;
     }
 
-    ShardDownsampleRequest(StreamInput in) throws IOException {
+    DownsampleShardRequest(StreamInput in) throws IOException {
         super(in);
         shardId = new ShardId(in);
         downsampleConfig = in.readNamedWriteable(DownsampleConfig.class);

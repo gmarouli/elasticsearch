@@ -30,15 +30,15 @@ import java.io.IOException;
 
 import static org.elasticsearch.xpack.downsample.Downsample.DOWNSAMPLE_TASK_THREAD_POOL_NAME;
 
-public class TransportShardDownsampleAction extends TransportSingleShardAction<ShardDownsampleRequest, ShardDownsampleResponse> {
+public class TransportDownsampleShardAction extends TransportSingleShardAction<DownsampleShardRequest, DownsampleShardResponse> {
 
-    private final Logger logger = LogManager.getLogger(TransportShardDownsampleAction.class);
-    public static final ActionType<ShardDownsampleResponse> TYPE = new ActionType<>("indices:data/downsample");
+    private final Logger logger = LogManager.getLogger(TransportDownsampleShardAction.class);
+    public static final ActionType<DownsampleShardResponse> TYPE = new ActionType<>("indices:data/downsample");
     private final IndicesService indicesService;
     private final Client client;
 
     @Inject
-    public TransportShardDownsampleAction(
+    public TransportDownsampleShardAction(
         ThreadPool threadPool,
         ClusterService clusterService,
         TransportService transportService,
@@ -56,7 +56,7 @@ public class TransportShardDownsampleAction extends TransportSingleShardAction<S
             actionFilters,
             projectResolver,
             indexNameExpressionResolver,
-            ShardDownsampleRequest::new,
+            DownsampleShardRequest::new,
             threadPool.executor(DOWNSAMPLE_TASK_THREAD_POOL_NAME)
         );
         this.indicesService = indicesService;
@@ -64,13 +64,13 @@ public class TransportShardDownsampleAction extends TransportSingleShardAction<S
     }
 
     @Override
-    protected boolean resolveIndex(ShardDownsampleRequest request) {
+    protected boolean resolveIndex(DownsampleShardRequest request) {
         return false;
     }
 
     @Override
-    protected void asyncShardOperation(ShardDownsampleRequest request, ShardId shardId, ActionListener<ShardDownsampleResponse> listener) {
-        final var downsampleShardIndexer = new IncrementalDownsampleShardIndexer(
+    protected void asyncShardOperation(DownsampleShardRequest request, ShardId shardId, ActionListener<DownsampleShardResponse> listener) {
+        final var downsampleShardIndexer = new DownsampleShardIndexer(
             request.getStartTime(),
             request.getEndTime(),
             client,
@@ -84,7 +84,7 @@ public class TransportShardDownsampleAction extends TransportSingleShardAction<S
                 request.getMetrics(),
                 request.getLabels(),
                 request.getDimensions(),
-                listener.map(downsampledDocs -> new ShardDownsampleResponse(true, shardId, downsampledDocs))
+                listener.map(downsampledDocs -> new DownsampleShardResponse(true, shardId, downsampledDocs))
             );
         } catch (Exception exception) {
             logger.error(
@@ -98,13 +98,13 @@ public class TransportShardDownsampleAction extends TransportSingleShardAction<S
     }
 
     @Override
-    protected ShardDownsampleResponse shardOperation(ShardDownsampleRequest request, ShardId shardId) throws IOException {
+    protected DownsampleShardResponse shardOperation(DownsampleShardRequest request, ShardId shardId) throws IOException {
         throw new UnsupportedOperationException("Downsampling is only async");
     }
 
     @Override
-    protected Writeable.Reader<ShardDownsampleResponse> getResponseReader() {
-        return ShardDownsampleResponse::new;
+    protected Writeable.Reader<DownsampleShardResponse> getResponseReader() {
+        return DownsampleShardResponse::new;
     }
 
     @Override
