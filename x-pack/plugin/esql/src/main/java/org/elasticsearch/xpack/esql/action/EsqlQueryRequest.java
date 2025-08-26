@@ -284,4 +284,24 @@ public class EsqlQueryRequest extends org.elasticsearch.xpack.core.esql.action.E
     void acceptedPragmaRisks(boolean accepted) {
         this.acceptedPragmaRisks = accepted;
     }
+
+    public static EsqlQueryRequest copy(EsqlQueryRequest request) {
+        EsqlQueryRequest copy = new EsqlQueryRequest(request.async());
+        copy.query(request.query());
+        copy.columnar(request.columnar());
+        copy.profile(request.profile());
+        copy.includeCCSMetadata(request.includeCCSMetadata());
+        copy.locale(request.locale());
+        copy.filter(request.filter());
+        copy.pragmas(request.pragmas());
+        copy.params(request.params());
+        copy.waitForCompletionTimeout(request.waitForCompletionTimeout());
+        copy.keepAlive(request.keepAlive());
+        copy.keepOnCompletion(request.keepOnCompletion());
+        copy.tables().putAll(request.tables());
+        copy.allowPartialResults(request.allowPartialResults());
+        copy.onSnapshotBuild(request.onSnapshotBuild);
+        copy.acceptedPragmaRisks(request.acceptedPragmaRisks);
+        return copy;
+    }
 }

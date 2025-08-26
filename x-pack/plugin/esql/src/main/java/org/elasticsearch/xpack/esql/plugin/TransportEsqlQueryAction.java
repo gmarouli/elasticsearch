@@ -12,6 +12,7 @@ import org.elasticsearch.action.ActionRunnable;
 import org.elasticsearch.action.admin.cluster.stats.CCSUsage;
 import org.elasticsearch.action.admin.cluster.stats.CCSUsageTelemetry;
 import org.elasticsearch.action.support.ActionFilters;
+import org.elasticsearch.action.support.GroupedActionListener;
 import org.elasticsearch.action.support.HandledTransportAction;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
@@ -59,6 +60,7 @@ import org.elasticsearch.xpack.esql.session.Result;
 import java.io.IOException;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -86,6 +88,7 @@ public class TransportEsqlQueryAction extends HandledTransportAction<EsqlQueryRe
     private final UsageService usageService;
     private final TransportActionServices services;
     private volatile boolean defaultAllowPartialResults;
+    private ProjectResolver projectResolver;
 
     @Inject
     @SuppressWarnings("this-escape")
@@ -177,6 +180,7 @@ public class TransportEsqlQueryAction extends HandledTransportAction<EsqlQueryRe
             bigArrays,
             blockFactoryProvider.blockFactory()
         );
+        this.projectResolver = projectResolver;
 
         defaultAllowPartialResults = EsqlPlugin.QUERY_ALLOW_PARTIAL_RESULTS.get(clusterService.getSettings());
         clusterService.getClusterSettings()
@@ -206,7 +210,7 @@ public class TransportEsqlQueryAction extends HandledTransportAction<EsqlQueryRe
                 listener
             );
         } else {
-            innerExecute(task, request, listener);
+            innerExecuteWithLayers(task, request, listener);
         }
     }
 
@@ -214,7 +218,37 @@ public class TransportEsqlQueryAction extends HandledTransportAction<EsqlQueryRe
     public void execute(EsqlQueryRequest request, EsqlQueryTask task, ActionListener<EsqlQueryResponse> listener) {
         // set EsqlExecutionInfo on async-search task so that it is accessible to GET _query/async while the query is still running
         task.setExecutionInfo(createEsqlExecutionInfo(request));
-        ActionListener.run(listener, l -> innerExecute(task, request, l));
+        ActionListener.run(listener, l -> innerExecuteWithLayers(task, request, l));
+    }
+
+    private void innerExecuteWithLayers(Task task, EsqlQueryRequest request, ActionListener<EsqlQueryResponse> listener) {
+        if (request.allowPartialResults() == null) {
+            request.allowPartialResults(defaultAllowPartialResults);
+        }
+        List<String> queries = EsqlQueryDownsampledLayerResolver.resolveDownsampleLayers(
+            request.query(),
+            projectResolver.getProjectState(clusterService.state())
+        );
+        if (queries.size() == 1) {
+            innerExecute(task, request, listener);
+            return;
+        }
+        GroupedActionListener<EsqlQueryResponse> groupListener = new GroupedActionListener<>(queries.size(), new ActionListener<>() {
+            @Override
+            public void onResponse(Collection<EsqlQueryResponse> esqlQueryResponses) {
+                listener.onResponse(EsqlQueryDownsampledLayerResolver.combineResponse(esqlQueryResponses));
+            }
+
+            @Override
+            public void onFailure(Exception e) {
+                listener.onFailure(e);
+            }
+        });
+        for (String query : queries) {
+            EsqlQueryRequest esqlQueryRequest = EsqlQueryRequest.copy(request);
+            esqlQueryRequest.query(query);
+            innerExecute(task, esqlQueryRequest, ActionListener.wrap(groupListener::onResponse, groupListener::onFailure));
+        }
     }
 
     private void innerExecute(Task task, EsqlQueryRequest request, ActionListener<EsqlQueryResponse> listener) {
