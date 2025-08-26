@@ -13,6 +13,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionType;
+import org.elasticsearch.action.admin.indices.create.CreateIndexRequest;
 import org.elasticsearch.action.admin.indices.stats.IndexStats;
 import org.elasticsearch.action.admin.indices.stats.IndicesStatsAction;
 import org.elasticsearch.action.admin.indices.stats.IndicesStatsRequest;
@@ -24,6 +25,7 @@ import org.elasticsearch.action.datastreams.autosharding.DataStreamAutoShardingS
 import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.action.support.ActiveShardsObserver;
 import org.elasticsearch.action.support.IndicesOptions;
+import org.elasticsearch.action.support.RefCountingListener;
 import org.elasticsearch.action.support.SubscribableListener;
 import org.elasticsearch.action.support.master.TransportMasterNodeAction;
 import org.elasticsearch.client.internal.Client;
@@ -340,47 +342,10 @@ public class TransportRolloverAction extends TransportMasterNodeAction<RolloverR
                         String source = "rollover_index source [" + trialSourceIndexName + "] to target [" + trialRolloverIndexName + "]";
                         rolloverTaskQueue.submitTask(source, rolloverTask, rolloverRequest.masterNodeTimeout());
                     }).<RolloverResponse>andThen((l, r) -> {
-                        if (r.isRolledOver() && targetFailureStore == false) {
+                        if (r.isRolledOver() && r.isDryRun() == false && targetFailureStore == false) {
                             DataStream dataStream = projectMetadata.dataStreams().get(rolloverRequest.getRolloverTarget());
                             if (dataStream != null && dataStream.hasIncrementalDownsamplingEnabled()) {
-                                DataStream layer = projectMetadata.dataStreams()
-                                    .get(DataStream.getDefaultDownsampleLayerIndexName(dataStream.getName(), "5m"));
-                                if (layer != null) {
-                                    final MetadataRolloverService.NameResolution layerRolloverNames = MetadataRolloverService
-                                        .resolveRolloverNames(
-                                            projectMetadata,
-                                            layer.getName(),
-                                            null,
-                                            rolloverRequest.getCreateIndexRequest(),
-                                            false
-                                        );
-                                    String layerSourceIndexName = layerRolloverNames.sourceName();
-                                    String layerRolloverIndexName = layerRolloverNames.rolloverName();
-                                    final RolloverResponse trialLayerRolloverResponse = new RolloverResponse(
-                                        layerSourceIndexName,
-                                        layerRolloverIndexName,
-                                        Map.of(),
-                                        rolloverRequest.isDryRun(),
-                                        false,
-                                        false,
-                                        false,
-                                        false
-                                    );
-                                    RolloverTask rolloverLayerTask = new RolloverTask(
-                                        projectState.projectId(),
-                                        new RolloverRequest(layer.getName(), null),
-                                        null,
-                                        trialLayerRolloverResponse,
-                                        null,
-                                        l.map(ignoredLayerResponse -> r)
-                                    );
-                                    String source = "rollover_index source ["
-                                        + layerSourceIndexName
-                                        + "] to target ["
-                                        + layerRolloverIndexName
-                                        + "]";
-                                    rolloverTaskQueue.submitTask(source, rolloverLayerTask, rolloverRequest.masterNodeTimeout());
-                                }
+                                rolloverDownsampledLayer(projectMetadata, dataStream, rolloverRequest.getCreateIndexRequest(), r, l);
                             }
                         }
                     }).addListener(delegate);
@@ -390,6 +355,53 @@ public class TransportRolloverAction extends TransportMasterNodeAction<RolloverR
                 }
             })
         );
+    }
+
+    private void rolloverDownsampledLayer(
+        ProjectMetadata projectMetadata,
+        DataStream dataStream,
+        CreateIndexRequest createIndexRequest,
+        RolloverResponse response,
+        ActionListener<RolloverResponse> listener
+    ) {
+        List<String> layers = projectMetadata.dataStreams().keySet().stream().filter(dataStream::hasDownsampledLayer).toList();
+        if (layers.isEmpty()) {
+            listener.onResponse(response);
+            return;
+        }
+        try (RefCountingListener refCountingListener = new RefCountingListener(listener.map(ignored -> response))) {
+            for (String layer : layers) {
+                final MetadataRolloverService.NameResolution layerRolloverNames = MetadataRolloverService.resolveRolloverNames(
+                    projectMetadata,
+                    layer,
+                    null,
+                    createIndexRequest,
+                    false
+                );
+                String layerSourceIndexName = layerRolloverNames.sourceName();
+                String layerRolloverIndexName = layerRolloverNames.rolloverName();
+                final RolloverResponse trialLayerRolloverResponse = new RolloverResponse(
+                    layerSourceIndexName,
+                    layerRolloverIndexName,
+                    Map.of(),
+                    false,
+                    false,
+                    false,
+                    false,
+                    false
+                );
+                RolloverTask rolloverLayerTask = new RolloverTask(
+                    projectMetadata.id(),
+                    new RolloverRequest(layer, null),
+                    null,
+                    trialLayerRolloverResponse,
+                    null,
+                    refCountingListener.acquire(ignored -> {})
+                );
+                String source = "rollover_index source [" + layerSourceIndexName + "] to target [" + layerRolloverIndexName + "]";
+                rolloverTaskQueue.submitTask(source, rolloverLayerTask, createIndexRequest.masterNodeTimeout());
+            }
+        }
     }
 
     private void markForLazyRollover(

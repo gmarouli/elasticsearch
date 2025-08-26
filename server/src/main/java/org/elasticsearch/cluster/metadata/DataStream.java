@@ -1929,6 +1929,10 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
         return name.startsWith(DOWNSAMPLED_PREFIX);
     }
 
+    public boolean hasDownsampledLayer(String layerName) {
+        return layerName.startsWith(DOWNSAMPLED_PREFIX) && layerName.endsWith(name);
+    }
+
     public static class DataStreamIndices {
         private final String namePrefix;
         private final List<Index> indices;

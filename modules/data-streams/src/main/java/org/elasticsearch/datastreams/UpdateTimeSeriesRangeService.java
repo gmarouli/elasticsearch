@@ -28,13 +28,13 @@ import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexMode;
 import org.elasticsearch.index.IndexSettings;
-import org.elasticsearch.search.aggregations.bucket.histogram.DateHistogramInterval;
 import org.elasticsearch.threadpool.Scheduler;
 import org.elasticsearch.threadpool.ThreadPool;
 
 import java.io.IOException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -134,11 +134,13 @@ public class UpdateTimeSeriesRangeService extends AbstractLifecycleComponent imp
             // getWriteIndex() selects the latest added index:
             Index head = dataStream.getWriteIndex();
             // TODO-ID: the write indices of the different layers should be nicer retrievable when this is correctly implemented.
-            Index head5mLayer = null;
+            List<Index> downsampledLayerHeads = new ArrayList<>();
             if (dataStream.hasIncrementalDownsamplingEnabled()) {
-                DataStream downsampleLayer = project.dataStreams()
-                    .get(DataStream.getDefaultDownsampleLayerIndexName(dataStream.getName(), new DateHistogramInterval("5m")));
-                head5mLayer = downsampleLayer == null ? null : downsampleLayer.getWriteIndex();
+                project.dataStreams().forEach((candidateName, ds) -> {
+                    if (dataStream.hasDownsampledLayer(candidateName)) {
+                        downsampledLayerHeads.add(ds.getWriteIndex());
+                    }
+                });
             }
             try {
                 IndexMetadata im = project.getIndexSafe(head);
@@ -162,8 +164,9 @@ public class UpdateTimeSeriesRangeService extends AbstractLifecycleComponent imp
                         mBuilder = ProjectMetadata.builder(project);
                     }
                     mBuilder.updateSettings(settings, head.getName());
-                    if (head5mLayer != null) {
-                        mBuilder.updateSettings(settings, head5mLayer.getName());
+                    // Update layers' end time as well
+                    for (Index layerHead : downsampledLayerHeads) {
+                        mBuilder.updateSettings(settings, layerHead.getName());
                     }
                     // Verify that all temporal ranges of each backing index is still valid:
                     dataStream.validate(mBuilder::get);
