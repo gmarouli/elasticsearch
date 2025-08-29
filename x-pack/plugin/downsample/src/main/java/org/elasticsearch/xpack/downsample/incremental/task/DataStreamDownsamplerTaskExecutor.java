@@ -38,8 +38,8 @@ public class DataStreamDownsamplerTaskExecutor extends PersistentTasksExecutor<D
 
     public static final Setting<TimeValue> POLL_INTERVAL_SETTING = Setting.timeSetting(
         "data_streams.downsampling.poll.interval",
-        TimeValue.timeValueMinutes(5),
-        TimeValue.timeValueMinutes(5),
+        TimeValue.timeValueMinutes(2),
+        TimeValue.timeValueMinutes(2),
         Setting.Property.Dynamic,
         Setting.Property.NodeScope
     );
