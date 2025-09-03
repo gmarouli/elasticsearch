@@ -180,10 +180,13 @@ public class EsqlQueryDownsampledLayerResolver {
             valuesLoaded += response.valuesLoaded();
         }
         pages.sort(Comparator.comparing(page -> {
-            if (page.getBlock(2).asVector() instanceof LongVector longVector) {
+            assert page.getBlockCount() >= 2;
+            // This code has the convention that the timestamp is one before last.
+            var timestampBlockIndex = page.getBlockCount() - 2;
+            if (page.getBlock(timestampBlockIndex).asVector() instanceof LongVector longVector) {
                 return longVector.getLong(0);
             } else {
-                throw new IllegalArgumentException("Cannot order response based on timestamp because the third block is not a long");
+                throw new IllegalStateException("Cannot order response based on timestamp because the third block is not a long");
             }
         }));
         EsqlQueryResponse sample = responses.stream().findFirst().get();

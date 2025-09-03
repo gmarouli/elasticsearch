@@ -236,7 +236,11 @@ public class TransportEsqlQueryAction extends HandledTransportAction<EsqlQueryRe
         GroupedActionListener<EsqlQueryResponse> groupListener = new GroupedActionListener<>(queries.size(), new ActionListener<>() {
             @Override
             public void onResponse(Collection<EsqlQueryResponse> esqlQueryResponses) {
-                listener.onResponse(EsqlQueryDownsampledLayerResolver.combineResponse(esqlQueryResponses));
+                try {
+                    listener.onResponse(EsqlQueryDownsampledLayerResolver.combineResponse(esqlQueryResponses));
+                } catch (IllegalStateException e) {
+                    listener.onFailure(e);
+                }
             }
 
             @Override
