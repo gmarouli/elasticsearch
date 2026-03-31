@@ -10,7 +10,6 @@
 package org.elasticsearch.search.aggregations.bucket.composite;
 
 import org.apache.lucene.index.LeafReaderContext;
-import org.apache.lucene.search.LongValues;
 import org.elasticsearch.common.Rounding;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
@@ -57,8 +56,10 @@ class RoundingValuesSource extends ValuesSource.Numeric {
     @Override
     public SortedNumericLongValues longValues(LeafReaderContext context) throws IOException {
         final SortedNumericLongValues values = vs.longValues(context);
-        final LongValues singleton = SortedNumericLongValues.unwrapSingleton(values);
-        return singleton != null ? SortedNumericLongValues.singleton(longSingleValues(singleton)) : longMultiValues(values);
+        if (values instanceof SortedNumericLongValues.Singleton singleton) {
+            return longSingleValues(singleton);
+        }
+        return longMultiValues(values);
     }
 
     private SortedNumericLongValues longMultiValues(SortedNumericLongValues values) {
@@ -77,19 +78,24 @@ class RoundingValuesSource extends ValuesSource.Numeric {
             public boolean advanceExact(int target) throws IOException {
                 return values.advanceExact(target);
             }
-        };
-    }
 
-    private LongValues longSingleValues(LongValues values) {
-        return new LongValues() {
             @Override
-            public long longValue() throws IOException {
-                return round(values.longValue());
+            public int advance(int target) throws IOException {
+                return values.advance(target);
             }
 
             @Override
-            public boolean advanceExact(int target) throws IOException {
-                return values.advanceExact(target);
+            public int docID() {
+                return values.docID();
+            }
+        };
+    }
+
+    private SortedNumericLongValues longSingleValues(SortedNumericLongValues.Singleton singletonValues) {
+        return new SortedNumericLongValues.Singleton(singletonValues) {
+            @Override
+            public long nextValue() throws IOException {
+                return round(values.longValue());
             }
         };
     }

@@ -289,7 +289,7 @@ class DateHistogramAggregator extends BucketsAggregator implements SizedBucketAg
             return LeafBucketCollector.NO_OP_COLLECTOR;
         }
         final SortedNumericLongValues values = valuesSource.longValues(aggCtx.getLeafReaderContext());
-        final LongValues singleton = SortedNumericLongValues.unwrapSingleton(values);
+        final LongValues singleton = values.unwrapSingleton();
         return singleton != null ? getLeafCollector(singleton, sub) : getLeafCollector(values, sub);
     }
 

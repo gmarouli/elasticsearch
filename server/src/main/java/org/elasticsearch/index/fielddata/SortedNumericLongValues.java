@@ -12,6 +12,7 @@ package org.elasticsearch.index.fielddata;
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.LongValues;
 
 import java.io.IOException;
@@ -20,7 +21,6 @@ import java.io.IOException;
  * A multivalued version of {@link LongValues}
  */
 public abstract class SortedNumericLongValues {
-
     /**
      * A {@link SortedNumericLongValues} instance that does not have a value for any document
      */
@@ -28,6 +28,16 @@ public abstract class SortedNumericLongValues {
         @Override
         public boolean advanceExact(int target) {
             return false;
+        }
+
+        @Override
+        public int advance(int target) throws IOException {
+            return DocIdSetIterator.NO_MORE_DOCS;
+        }
+
+        @Override
+        public int docID() {
+            return DocIdSetIterator.NO_MORE_DOCS;
         }
 
         @Override
@@ -49,6 +59,26 @@ public abstract class SortedNumericLongValues {
     public abstract boolean advanceExact(int target) throws IOException;
 
     /**
+     * Advances to the first beyond the current whose document number is greater than or equal to
+     * {@code target}, and returns the document number itself. Exhausts the iterator and returns {@link
+     * org.apache.lucene.search.DocIdSetIterator#NO_MORE_DOCS} if {@code target} is greater than the
+     * highest document number in the set.
+     *
+     * <p><b>NOTE:</b>The behavior of this method is <b>undefined</b> when called with {@code target}
+     * is less or equal than the current doc id, or after the iterator has exhausted. Both cases may
+     * result in unpredicted behavior.
+     */
+    public abstract int advance(int target) throws IOException;
+
+    /**
+     * Returns the following
+     *  {@code -1}, if {@link #nextValue()} ()}, {@link #advanceExact(int)} or {@link #advance(int)} were not called yet.
+     *  {@link org.apache.lucene.search.DocIdSetIterator#NO_MORE_DOCS} if the iterator has exhausted.
+     *  otherwise, the doc ID it is currently on.
+     */
+    public abstract int docID();
+
+    /**
      * Iterates to the next value in the current document. Do not call this more than
      * {@link #docValueCount} times for the document.
      */
@@ -62,35 +92,36 @@ public abstract class SortedNumericLongValues {
      */
     public abstract int docValueCount();
 
-    /**
-     * Converts a {@link SortedNumericLongValues} values to a singly valued {@link LongValues}
-     * if possible
-     */
-    public static LongValues unwrapSingleton(SortedNumericLongValues values) {
-        if (values instanceof SingletonSortedNumericLongValues sv) {
-            return sv.values;
-        }
+    public LongValues unwrapSingleton() {
         return null;
     }
 
-    /**
-     * Converts a {@link LongValues} to a {@link SortedNumericLongValues}
-     */
-    public static SortedNumericLongValues singleton(LongValues values) {
-        return new SingletonSortedNumericLongValues(values);
-    }
+    public static class Singleton extends SortedNumericLongValues {
 
-    private static class SingletonSortedNumericLongValues extends SortedNumericLongValues {
+        protected final NumericDocValues values;
+        private LongValues longValues;
 
-        private final LongValues values;
-
-        private SingletonSortedNumericLongValues(LongValues values) {
+        private Singleton(NumericDocValues values) {
             this.values = values;
+        }
+
+        protected Singleton(Singleton other) {
+            this.values = other.values;
         }
 
         @Override
         public boolean advanceExact(int target) throws IOException {
             return values.advanceExact(target);
+        }
+
+        @Override
+        public int advance(int target) throws IOException {
+            return values.advance(target);
+        }
+
+        @Override
+        public int docID() {
+            return values.docID();
         }
 
         @Override
@@ -102,6 +133,24 @@ public abstract class SortedNumericLongValues {
         public int docValueCount() {
             return 1;
         }
+
+        public LongValues unwrapSingleton() {
+            if (longValues == null) {
+                longValues = new LongValues() {
+
+                    @Override
+                    public long longValue() throws IOException {
+                        return values.longValue();
+                    }
+
+                    @Override
+                    public boolean advanceExact(int doc) throws IOException {
+                        return values.advanceExact(doc);
+                    }
+                };
+            }
+            return longValues;
+        }
     }
 
     /**
@@ -109,27 +158,27 @@ public abstract class SortedNumericLongValues {
      *
      * Note that if the wrapped iterator can be unwrapped to a singleton {@link NumericDocValues}
      * instance, then the returned {@link SortedNumericLongValues} can also be unwrapped to
-     * a {@link LongValues} instance via {@link #unwrapSingleton(SortedNumericLongValues)}
+     * a {@link LongValues} instance via {@link SortedNumericLongValues#unwrapSingleton()}
      */
     public static SortedNumericLongValues wrap(SortedNumericDocValues values) {
         NumericDocValues singleton = DocValues.unwrapSingleton(values);
         if (singleton != null) {
-            return new SingletonSortedNumericLongValues(new LongValues() {
-                @Override
-                public long longValue() throws IOException {
-                    return singleton.longValue();
-                }
-
-                @Override
-                public boolean advanceExact(int doc) throws IOException {
-                    return singleton.advanceExact(doc);
-                }
-            });
+            return new Singleton(singleton);
         }
         return new SortedNumericLongValues() {
             @Override
             public boolean advanceExact(int target) throws IOException {
                 return values.advanceExact(target);
+            }
+
+            @Override
+            public int advance(int target) throws IOException {
+                return values.advance(target);
+            }
+
+            @Override
+            public int docID() {
+                return values.docID();
             }
 
             @Override
