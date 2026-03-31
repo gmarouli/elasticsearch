@@ -11,6 +11,8 @@ import org.apache.lucene.search.DoubleValues;
 import org.apache.lucene.search.LongValues;
 import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.FormattedDocValues;
+import org.elasticsearch.index.fielddata.IterableSortedNumericDoubleValues;
+import org.elasticsearch.index.fielddata.IterableSortedNumericLongValues;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
@@ -36,6 +38,11 @@ public class UnsignedLongLeafFieldData implements LeafNumericFieldData {
     @Override
     public SortedNumericLongValues getLongValues() {
         return signedLongFD.getLongValues();
+    }
+
+    @Override
+    public IterableSortedNumericLongValues getIterableLongValues() {
+        return signedLongFD.getIterableLongValues();
     }
 
     @Override
@@ -73,6 +80,14 @@ public class UnsignedLongLeafFieldData implements LeafNumericFieldData {
                 }
             };
         }
+    }
+
+    @Override
+    public IterableSortedNumericDoubleValues getIterableDoubleValues() {
+        var iterableLongValues = getIterableLongValues();
+        return iterableLongValues == null
+            ? null
+            : iterableLongValues.convertToDoubles(UnsignedLongLeafFieldData::convertUnsignedLongToDouble);
     }
 
     @Override

@@ -9,6 +9,8 @@
 
 package org.elasticsearch.index.fielddata;
 
+import org.elasticsearch.core.Nullable;
+
 /**
  * Specialization of {@link LeafFieldData} for numeric data.
  */
@@ -22,10 +24,32 @@ public interface LeafNumericFieldData extends LeafFieldData {
     SortedNumericLongValues getLongValues();
 
     /**
+     * Return an iterable floating-point view of the values in this segment when possible,
+     * otherwise null. If the implementation
+     * stores floating-point numbers then these values will return the same
+     * values but casted to longs.
+     */
+    @Nullable
+    default IterableSortedNumericLongValues getIterableLongValues() {
+        return null;
+    };
+
+    /**
      * Return a floating-point view of the values in this segment. If the
      * implementation stored integers then the returned doubles would be the
      * same ones as you would get from casting to a double.
      */
     SortedNumericDoubleValues getDoubleValues();
+
+    /**
+     * Return an iterable floating-point view of the values in this segment when possible,
+     * otherwise null.
+     * If the implementation stored integers, then the returned doubles would be the
+     * same ones as you would get from casting to a double.
+     */
+    @Nullable
+    default IterableSortedNumericDoubleValues getIterableDoubleValues() {
+        return null;
+    }
 
 }

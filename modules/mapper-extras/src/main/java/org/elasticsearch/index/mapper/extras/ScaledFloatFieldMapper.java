@@ -23,6 +23,8 @@ import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.FieldDataContext;
 import org.elasticsearch.index.fielddata.IndexFieldData;
 import org.elasticsearch.index.fielddata.IndexNumericFieldData;
+import org.elasticsearch.index.fielddata.IterableSortedNumericDoubleValues;
+import org.elasticsearch.index.fielddata.IterableSortedNumericLongValues;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
@@ -862,6 +864,12 @@ public class ScaledFloatFieldMapper extends FieldMapper {
                     }
                 };
             }
+        }
+
+        @Override
+        public IterableSortedNumericDoubleValues getIterableDoubleValues() {
+            final IterableSortedNumericLongValues values = scaledFieldData.getIterableLongValues();
+            return values == null ? null : values.convertToDoubles(v -> v * scalingFactorInverse);
         }
     }
 

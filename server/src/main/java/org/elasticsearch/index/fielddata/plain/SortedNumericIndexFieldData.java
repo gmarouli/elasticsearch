@@ -20,6 +20,8 @@ import org.elasticsearch.index.fielddata.IndexFieldData;
 import org.elasticsearch.index.fielddata.IndexFieldData.XFieldComparatorSource.Nested;
 import org.elasticsearch.index.fielddata.IndexFieldDataCache;
 import org.elasticsearch.index.fielddata.IndexNumericFieldData;
+import org.elasticsearch.index.fielddata.IterableSortedNumericDoubleValues;
+import org.elasticsearch.index.fielddata.IterableSortedNumericLongValues;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
 import org.elasticsearch.index.fielddata.fieldcomparator.LongValuesComparatorSource;
@@ -193,6 +195,15 @@ public class SortedNumericIndexFieldData extends IndexNumericFieldData {
             return convertNumeric(getLongValuesAsNanos(), DateUtils::toMilliSeconds);
         }
 
+        @Override
+        public IterableSortedNumericLongValues getIterableLongValues() {
+            try {
+                return new IterableSortedNumericLongValues(DocValues.getSortedNumeric(reader, fieldName), DateUtils::toMilliSeconds);
+            } catch (IOException e) {
+                throw new IllegalStateException("Cannot load doc values", e);
+            }
+        }
+
         public SortedNumericLongValues getLongValuesAsNanos() {
             try {
                 return SortedNumericLongValues.wrap(DocValues.getSortedNumeric(reader, fieldName));
@@ -240,6 +251,15 @@ public class SortedNumericIndexFieldData extends IndexNumericFieldData {
         public SortedNumericLongValues getLongValues() {
             try {
                 return SortedNumericLongValues.wrap(DocValues.getSortedNumeric(reader, field));
+            } catch (IOException e) {
+                throw new IllegalStateException("Cannot load doc values", e);
+            }
+        }
+
+        @Override
+        public IterableSortedNumericDoubleValues getIterableDoubleValues() {
+            try {
+                return new IterableSortedNumericDoubleValues(DocValues.getSortedNumeric(reader, field));
             } catch (IOException e) {
                 throw new IllegalStateException("Cannot load doc values", e);
             }
