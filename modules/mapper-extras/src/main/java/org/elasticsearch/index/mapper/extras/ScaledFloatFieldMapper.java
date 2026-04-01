@@ -23,8 +23,7 @@ import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.FieldDataContext;
 import org.elasticsearch.index.fielddata.IndexFieldData;
 import org.elasticsearch.index.fielddata.IndexNumericFieldData;
-import org.elasticsearch.index.fielddata.IterableSortedNumericDoubleValues;
-import org.elasticsearch.index.fielddata.IterableSortedNumericLongValues;
+import org.elasticsearch.index.fielddata.IterableSortedNumericValues;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
@@ -867,9 +866,43 @@ public class ScaledFloatFieldMapper extends FieldMapper {
         }
 
         @Override
-        public IterableSortedNumericDoubleValues getIterableDoubleValues() {
-            final IterableSortedNumericLongValues values = scaledFieldData.getIterableLongValues();
-            return values == null ? null : values.convertToDoubles(v -> v * scalingFactorInverse);
+        public IterableSortedNumericValues getIterableNumericValues() {
+            final IterableSortedNumericValues values = scaledFieldData.getIterableNumericValues();
+            if (values == null) {
+                return null;
+            }
+            return new IterableSortedNumericValues() {
+
+                @Override
+                public boolean advanceExact(int target) throws IOException {
+                    return values.advanceExact(target);
+                }
+
+                @Override
+                public double nextDoubleValue() throws IOException {
+                    return values.nextLongValue() * scalingFactorInverse;
+                }
+
+                @Override
+                public long nextLongValue() throws IOException {
+                    return (long) nextDoubleValue();
+                }
+
+                @Override
+                public int docValueCount() {
+                    return values.docValueCount();
+                }
+
+                @Override
+                public int advance(int target) throws IOException {
+                    return values.advance(target);
+                }
+
+                @Override
+                public int docID() {
+                    return values.docID();
+                }
+            };
         }
     }
 

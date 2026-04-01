@@ -11,8 +11,6 @@ package org.elasticsearch.index.fielddata.plain;
 
 import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.FormattedDocValues;
-import org.elasticsearch.index.fielddata.IterableSortedNumericDoubleValues;
-import org.elasticsearch.index.fielddata.IterableSortedNumericLongValues;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
@@ -42,12 +40,6 @@ public abstract class LeafLongFieldData implements LeafNumericFieldData {
     @Override
     public final SortedNumericDoubleValues getDoubleValues() {
         return FieldData.castToDouble(getLongValues());
-    }
-
-    @Override
-    public IterableSortedNumericDoubleValues getIterableDoubleValues() {
-        IterableSortedNumericLongValues iterableLongValues = getIterableLongValues();
-        return iterableLongValues == null ? null : iterableLongValues.castAsDoubles();
     }
 
     @Override

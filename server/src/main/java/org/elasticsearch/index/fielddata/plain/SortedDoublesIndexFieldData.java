@@ -23,6 +23,7 @@ import org.elasticsearch.index.fielddata.IndexFieldData;
 import org.elasticsearch.index.fielddata.IndexFieldDataCache;
 import org.elasticsearch.index.fielddata.IndexNumericFieldData;
 import org.elasticsearch.index.fielddata.IterableSortedNumericDoubleValues;
+import org.elasticsearch.index.fielddata.IterableSortedNumericValues;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
@@ -176,10 +177,15 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
         }
 
         @Override
-        public IterableSortedNumericDoubleValues getIterableDoubleValues() {
+        public IterableSortedNumericValues getIterableNumericValues() {
             try {
                 SortedNumericDocValues raw = DocValues.getSortedNumeric(reader, field);
-                return new IterableSortedNumericDoubleValues(raw, v -> HalfFloatPoint.sortableShortToHalfFloat((short) v));
+                return new IterableSortedNumericDoubleValues(raw) {
+                    @Override
+                    public double nextDoubleValue() throws IOException {
+                        return HalfFloatPoint.sortableShortToHalfFloat((short) raw.nextValue());
+                    }
+                };
             } catch (IOException e) {
                 throw new IllegalStateException("Cannot load doc values", e);
             }
@@ -279,10 +285,15 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
         }
 
         @Override
-        public IterableSortedNumericDoubleValues getIterableDoubleValues() {
+        public IterableSortedNumericValues getIterableNumericValues() {
             try {
                 SortedNumericDocValues raw = DocValues.getSortedNumeric(reader, field);
-                return new IterableSortedNumericDoubleValues(raw, v -> NumericUtils.sortableIntToFloat((int) v));
+                return new IterableSortedNumericDoubleValues(raw) {
+                    @Override
+                    public double nextDoubleValue() throws IOException {
+                        return NumericUtils.sortableIntToFloat((int) raw.nextValue());
+                    }
+                };
             } catch (IOException e) {
                 throw new IllegalStateException("Cannot load doc values", e);
             }
@@ -380,7 +391,7 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
         }
 
         @Override
-        public IterableSortedNumericDoubleValues getIterableDoubleValues() {
+        public IterableSortedNumericValues getIterableNumericValues() {
             try {
                 SortedNumericDocValues raw = DocValues.getSortedNumeric(reader, field);
                 return new IterableSortedNumericDoubleValues(raw);

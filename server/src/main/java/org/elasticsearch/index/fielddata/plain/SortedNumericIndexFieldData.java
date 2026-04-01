@@ -20,8 +20,8 @@ import org.elasticsearch.index.fielddata.IndexFieldData;
 import org.elasticsearch.index.fielddata.IndexFieldData.XFieldComparatorSource.Nested;
 import org.elasticsearch.index.fielddata.IndexFieldDataCache;
 import org.elasticsearch.index.fielddata.IndexNumericFieldData;
-import org.elasticsearch.index.fielddata.IterableSortedNumericDoubleValues;
 import org.elasticsearch.index.fielddata.IterableSortedNumericLongValues;
+import org.elasticsearch.index.fielddata.IterableSortedNumericValues;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
 import org.elasticsearch.index.fielddata.fieldcomparator.LongValuesComparatorSource;
@@ -196,9 +196,15 @@ public class SortedNumericIndexFieldData extends IndexNumericFieldData {
         }
 
         @Override
-        public IterableSortedNumericLongValues getIterableLongValues() {
+        public IterableSortedNumericValues getIterableNumericValues() {
             try {
-                return new IterableSortedNumericLongValues(DocValues.getSortedNumeric(reader, fieldName), DateUtils::toMilliSeconds);
+                SortedNumericDocValues raw = DocValues.getSortedNumeric(reader, fieldName);
+                return new IterableSortedNumericLongValues(raw) {
+                    @Override
+                    public long nextLongValue() throws IOException {
+                        return DateUtils.toMilliSeconds(raw.nextValue());
+                    }
+                };
             } catch (IOException e) {
                 throw new IllegalStateException("Cannot load doc values", e);
             }
@@ -257,9 +263,9 @@ public class SortedNumericIndexFieldData extends IndexNumericFieldData {
         }
 
         @Override
-        public IterableSortedNumericDoubleValues getIterableDoubleValues() {
+        public IterableSortedNumericValues getIterableNumericValues() {
             try {
-                return new IterableSortedNumericDoubleValues(DocValues.getSortedNumeric(reader, field));
+                return new IterableSortedNumericLongValues(DocValues.getSortedNumeric(reader, field));
             } catch (IOException e) {
                 throw new IllegalStateException("Cannot load doc values", e);
             }

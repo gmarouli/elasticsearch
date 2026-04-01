@@ -11,8 +11,7 @@ import org.apache.lucene.search.DoubleValues;
 import org.apache.lucene.search.LongValues;
 import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.FormattedDocValues;
-import org.elasticsearch.index.fielddata.IterableSortedNumericDoubleValues;
-import org.elasticsearch.index.fielddata.IterableSortedNumericLongValues;
+import org.elasticsearch.index.fielddata.IterableSortedNumericValues;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
@@ -38,11 +37,6 @@ public class UnsignedLongLeafFieldData implements LeafNumericFieldData {
     @Override
     public SortedNumericLongValues getLongValues() {
         return signedLongFD.getLongValues();
-    }
-
-    @Override
-    public IterableSortedNumericLongValues getIterableLongValues() {
-        return signedLongFD.getIterableLongValues();
     }
 
     @Override
@@ -83,11 +77,42 @@ public class UnsignedLongLeafFieldData implements LeafNumericFieldData {
     }
 
     @Override
-    public IterableSortedNumericDoubleValues getIterableDoubleValues() {
-        var iterableLongValues = getIterableLongValues();
-        return iterableLongValues == null
-            ? null
-            : iterableLongValues.convertToDoubles(UnsignedLongLeafFieldData::convertUnsignedLongToDouble);
+    public IterableSortedNumericValues getIterableNumericValues() {
+        var signedLongValues = signedLongFD.getIterableNumericValues();
+        if (signedLongValues == null) {
+            return null;
+        }
+        return new IterableSortedNumericValues() {
+            @Override
+            public boolean advanceExact(int target) throws IOException {
+                return signedLongValues.advanceExact(target);
+            }
+
+            @Override
+            public double nextDoubleValue() throws IOException {
+                return convertUnsignedLongToDouble(signedLongValues.nextLongValue());
+            }
+
+            @Override
+            public long nextLongValue() throws IOException {
+                return signedLongValues.nextLongValue();
+            }
+
+            @Override
+            public int docValueCount() {
+                return signedLongValues.docValueCount();
+            }
+
+            @Override
+            public int advance(int target) throws IOException {
+                return signedLongValues.advance(target);
+            }
+
+            @Override
+            public int docID() {
+                return signedLongValues.docID();
+            }
+        };
     }
 
     @Override
