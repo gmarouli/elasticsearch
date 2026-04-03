@@ -28,4 +28,12 @@ public interface LeafNumericFieldData extends LeafFieldData {
      */
     SortedNumericDoubleValues getDoubleValues();
 
+    /**
+     * Return a view of the values in this segment, the integer or the floating-point
+     * view can be accessed via the next*Value accessors. If the
+     * implementation stored integers then the returned doubles would be the
+     * same ones as you would get from casting to a double and vice versa.
+     */
+    SortedNumericValues getValues();
+
 }

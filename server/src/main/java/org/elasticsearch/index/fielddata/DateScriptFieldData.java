@@ -115,6 +115,11 @@ public final class DateScriptFieldData extends IndexNumericFieldData {
         }
 
         @Override
+        public SortedNumericValues getValues() {
+            return longScriptDocValues;
+        }
+
+        @Override
         public DocValuesScriptFieldFactory getScriptFieldFactory(String name) {
             return toScriptFieldFactory.getScriptFieldFactory(getLongValues(), name);
         }

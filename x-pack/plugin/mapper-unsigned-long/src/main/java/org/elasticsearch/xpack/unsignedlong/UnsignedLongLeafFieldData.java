@@ -15,6 +15,7 @@ import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.fielddata.plain.FormattedSortedNumericDocValues;
 import org.elasticsearch.script.field.DocValuesScriptFieldFactory;
 import org.elasticsearch.script.field.ToScriptFieldFactory;
@@ -40,6 +41,43 @@ public class UnsignedLongLeafFieldData implements LeafNumericFieldData {
 
     @Override
     public SortedNumericDoubleValues getDoubleValues() {
+        final SortedNumericLongValues values = signedLongFD.getLongValues();
+        final LongValues singleValues = values.unwrapSingletonLongValues();
+        if (singleValues != null) {
+            return FieldData.singleton(new DoubleValues() {
+                @Override
+                public boolean advanceExact(int doc) throws IOException {
+                    return singleValues.advanceExact(doc);
+                }
+
+                @Override
+                public double doubleValue() throws IOException {
+                    return convertUnsignedLongToDouble(singleValues.longValue());
+                }
+            });
+        } else {
+            return new SortedNumericDoubleValues() {
+
+                @Override
+                public boolean advanceExact(int target) throws IOException {
+                    return values.advanceExact(target);
+                }
+
+                @Override
+                public double nextDoubleValue() throws IOException {
+                    return convertUnsignedLongToDouble(values.nextLongValue());
+                }
+
+                @Override
+                public int docValueCount() {
+                    return values.docValueCount();
+                }
+            };
+        }
+    }
+
+    @Override
+    public SortedNumericValues getValues() {
         final SortedNumericLongValues values = signedLongFD.getLongValues();
         final LongValues singleValues = values.unwrapSingletonLongValues();
         if (singleValues != null) {

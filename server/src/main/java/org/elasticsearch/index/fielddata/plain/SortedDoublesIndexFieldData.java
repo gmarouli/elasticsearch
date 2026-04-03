@@ -25,6 +25,7 @@ import org.elasticsearch.index.fielddata.IndexNumericFieldData;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.mapper.IndexType;
 import org.elasticsearch.indices.breaker.CircuitBreakerService;
 import org.elasticsearch.script.field.DocValuesScriptFieldFactory;
@@ -175,6 +176,22 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
         }
 
         @Override
+        public SortedNumericValues getValues() {
+            try {
+                SortedNumericDocValues raw = DocValues.getSortedNumeric(reader, field);
+
+                NumericDocValues single = DocValues.unwrapSingleton(raw);
+                if (single != null) {
+                    return FieldData.singleton(new SingleHalfFloatValues(single));
+                } else {
+                    return new MultiHalfFloatValues(raw);
+                }
+            } catch (IOException e) {
+                throw new IllegalStateException("Cannot load doc values", e);
+            }
+        }
+
+        @Override
         public DocValuesScriptFieldFactory getScriptFieldFactory(String name) {
             return toScriptFieldFactory.getScriptFieldFactory(getDoubleValues(), name);
         }
@@ -253,6 +270,22 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
 
         @Override
         public SortedNumericDoubleValues getDoubleValues() {
+            try {
+                SortedNumericDocValues raw = DocValues.getSortedNumeric(reader, field);
+
+                NumericDocValues single = DocValues.unwrapSingleton(raw);
+                if (single != null) {
+                    return FieldData.singleton(new SingleFloatValues(single));
+                } else {
+                    return new MultiFloatValues(raw);
+                }
+            } catch (IOException e) {
+                throw new IllegalStateException("Cannot load doc values", e);
+            }
+        }
+
+        @Override
+        public SortedNumericValues getValues() {
             try {
                 SortedNumericDocValues raw = DocValues.getSortedNumeric(reader, field);
 
@@ -353,6 +386,16 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
             try {
                 SortedNumericDocValues raw = DocValues.getSortedNumeric(reader, field);
                 return FieldData.sortableLongBitsToDoubles(SortedNumericLongValues.wrap(raw));
+            } catch (IOException e) {
+                throw new IllegalStateException("Cannot load doc values", e);
+            }
+        }
+
+        @Override
+        public SortedNumericValues getValues() {
+            try {
+                SortedNumericDocValues raw = DocValues.getSortedNumeric(reader, field);
+                return SortedNumericLongValues.wrap(raw);
             } catch (IOException e) {
                 throw new IllegalStateException("Cannot load doc values", e);
             }

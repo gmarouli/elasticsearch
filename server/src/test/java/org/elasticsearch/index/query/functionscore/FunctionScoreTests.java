@@ -49,6 +49,7 @@ import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.mapper.IndexType;
 import org.elasticsearch.script.field.DocValuesScriptFieldFactory;
 import org.elasticsearch.search.DocValueFormat;
@@ -189,6 +190,26 @@ public class FunctionScoreTests extends ESTestCase {
 
                 @Override
                 public SortedNumericDoubleValues getDoubleValues() {
+                    return new SortedNumericDoubleValues() {
+                        @Override
+                        public boolean advanceExact(int docId) {
+                            return true;
+                        }
+
+                        @Override
+                        public int docValueCount() {
+                            return 1;
+                        }
+
+                        @Override
+                        public double nextDoubleValue() {
+                            return 1d;
+                        }
+                    };
+                }
+
+                @Override
+                public SortedNumericValues getValues() {
                     return new SortedNumericDoubleValues() {
                         @Override
                         public boolean advanceExact(int docId) {

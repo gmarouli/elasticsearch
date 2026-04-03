@@ -22,6 +22,7 @@ import org.elasticsearch.index.fielddata.IndexFieldDataCache;
 import org.elasticsearch.index.fielddata.IndexNumericFieldData;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.fielddata.fieldcomparator.LongValuesComparatorSource;
 import org.elasticsearch.index.mapper.IndexType;
 import org.elasticsearch.indices.breaker.CircuitBreakerService;
@@ -193,6 +194,11 @@ public class SortedNumericIndexFieldData extends IndexNumericFieldData {
             return convertNumeric(getLongValuesAsNanos(), DateUtils::toMilliSeconds);
         }
 
+        @Override
+        public SortedNumericValues getValues() {
+            return convertNumeric(getLongValuesAsNanos(), DateUtils::toMilliSeconds);
+        }
+
         public SortedNumericLongValues getLongValuesAsNanos() {
             try {
                 return SortedNumericLongValues.wrap(DocValues.getSortedNumeric(reader, fieldName));
@@ -238,6 +244,15 @@ public class SortedNumericIndexFieldData extends IndexNumericFieldData {
 
         @Override
         public SortedNumericLongValues getLongValues() {
+            try {
+                return SortedNumericLongValues.wrap(DocValues.getSortedNumeric(reader, field));
+            } catch (IOException e) {
+                throw new IllegalStateException("Cannot load doc values", e);
+            }
+        }
+
+        @Override
+        public SortedNumericValues getValues() {
             try {
                 return SortedNumericLongValues.wrap(DocValues.getSortedNumeric(reader, field));
             } catch (IOException e) {

@@ -114,6 +114,11 @@ public final class DoubleScriptFieldData extends IndexNumericFieldData {
         }
 
         @Override
+        public SortedNumericValues getValues() {
+            return doubleScriptDocValues;
+        }
+
+        @Override
         public DocValuesScriptFieldFactory getScriptFieldFactory(String name) {
             return toScriptFieldFactory.getScriptFieldFactory(getDoubleValues(), name);
         }
