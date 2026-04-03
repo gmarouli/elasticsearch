@@ -67,7 +67,7 @@ public class BoxplotAggregator extends AbstractBoxplotAggregator {
                         HistogramUnionState state = getExistingOrNewHistogram(bigArrays(), bucket);
                         final int valueCount = values.docValueCount();
                         for (int i = 0; i < valueCount; i++) {
-                            state.add(values.nextValue());
+                            state.add(values.nextDoubleValue());
                         }
                     }
                 }

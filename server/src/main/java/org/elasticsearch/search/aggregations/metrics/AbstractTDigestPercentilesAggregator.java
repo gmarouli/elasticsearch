@@ -63,7 +63,7 @@ abstract class AbstractTDigestPercentilesAggregator extends NumericMetricsAggreg
                 if (values.advanceExact(doc)) {
                     final HistogramUnionState state = getExistingOrNewHistogram(bigArrays(), bucket);
                     for (int i = 0; i < values.docValueCount(); i++) {
-                        state.add(values.nextValue());
+                        state.add(values.nextDoubleValue());
                     }
                 }
             }

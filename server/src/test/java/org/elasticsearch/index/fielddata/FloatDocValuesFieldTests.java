@@ -139,7 +139,7 @@ public class FloatDocValuesFieldTests extends ESTestCase {
             }
 
             @Override
-            public double nextValue() {
+            public double nextDoubleValue() {
                 return current[i++];
             }
         };

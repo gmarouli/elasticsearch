@@ -42,7 +42,7 @@ public class ExpressionFieldScriptTests extends ESTestCase {
 
         SortedNumericDoubleValues doubleValues = mock(SortedNumericDoubleValues.class);
         when(doubleValues.advanceExact(anyInt())).thenReturn(true);
-        when(doubleValues.nextValue()).thenReturn(2.718);
+        when(doubleValues.nextDoubleValue()).thenReturn(2.718);
 
         LeafNumericFieldData atomicFieldData = mock(LeafNumericFieldData.class);
         when(atomicFieldData.getDoubleValues()).thenReturn(doubleValues);

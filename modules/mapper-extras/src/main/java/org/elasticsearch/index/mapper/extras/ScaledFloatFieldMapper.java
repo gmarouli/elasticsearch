@@ -852,7 +852,7 @@ public class ScaledFloatFieldMapper extends FieldMapper {
                     }
 
                     @Override
-                    public double nextValue() throws IOException {
+                    public double nextDoubleValue() throws IOException {
                         return values.nextValue() * scalingFactorInverse;
                     }
 

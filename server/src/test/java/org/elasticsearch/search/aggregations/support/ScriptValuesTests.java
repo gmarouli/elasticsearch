@@ -143,7 +143,7 @@ public class ScriptValuesTests extends ESTestCase {
             if (values[i].length > 0) {
                 assertEquals(values[i].length, scriptValues.docValueCount());
                 for (int j = 0; j < values[i].length; ++j) {
-                    assertEquals(values[i][j], scriptValues.nextValue());
+                    assertEquals(values[i][j], scriptValues.nextDoubleValue());
                 }
             }
         }

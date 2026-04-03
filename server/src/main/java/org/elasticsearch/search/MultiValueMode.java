@@ -86,7 +86,7 @@ public enum MultiValueMode implements Writeable {
             final int count = values.docValueCount();
             double total = 0;
             for (int index = 0; index < count; ++index) {
-                total += values.nextValue();
+                total += values.nextDoubleValue();
             }
             return total;
         }
@@ -110,7 +110,7 @@ public enum MultiValueMode implements Writeable {
                     }
                     final int docCount = values.docValueCount();
                     for (int index = 0; index < docCount; ++index) {
-                        totalValue += values.nextValue();
+                        totalValue += values.nextDoubleValue();
                     }
                     totalCount += docCount;
                 }
@@ -169,7 +169,7 @@ public enum MultiValueMode implements Writeable {
             final int count = values.docValueCount();
             double total = 0;
             for (int index = 0; index < count; ++index) {
-                total += values.nextValue();
+                total += values.nextDoubleValue();
             }
             return total / count;
         }
@@ -193,7 +193,7 @@ public enum MultiValueMode implements Writeable {
                     }
                     final int docCount = values.docValueCount();
                     for (int index = 0; index < docCount; ++index) {
-                        totalValue += values.nextValue();
+                        totalValue += values.nextDoubleValue();
                     }
                     totalCount += docCount;
                 }
@@ -226,12 +226,12 @@ public enum MultiValueMode implements Writeable {
         protected double pick(SortedNumericDoubleValues values) throws IOException {
             int count = values.docValueCount();
             for (int i = 0; i < (count - 1) / 2; ++i) {
-                values.nextValue();
+                values.nextDoubleValue();
             }
             if (count % 2 == 0) {
-                return (values.nextValue() + values.nextValue()) / 2;
+                return (values.nextDoubleValue() + values.nextDoubleValue()) / 2;
             } else {
-                return values.nextValue();
+                return values.nextDoubleValue();
             }
         }
     },
@@ -271,7 +271,7 @@ public enum MultiValueMode implements Writeable {
 
         @Override
         protected double pick(SortedNumericDoubleValues values) throws IOException {
-            return values.nextValue();
+            return values.nextDoubleValue();
         }
 
         @Override
@@ -291,7 +291,7 @@ public enum MultiValueMode implements Writeable {
                     if (++count > maxChildren) {
                         break;
                     }
-                    minValue = Math.min(minValue, values.nextValue());
+                    minValue = Math.min(minValue, values.nextDoubleValue());
                     hasValue = true;
                 }
             }
@@ -404,9 +404,9 @@ public enum MultiValueMode implements Writeable {
         protected double pick(SortedNumericDoubleValues values) throws IOException {
             final int count = values.docValueCount();
             for (int i = 0; i < count - 1; ++i) {
-                values.nextValue();
+                values.nextDoubleValue();
             }
-            return values.nextValue();
+            return values.nextDoubleValue();
         }
 
         @Override
@@ -428,9 +428,9 @@ public enum MultiValueMode implements Writeable {
                     }
                     final int docCount = values.docValueCount();
                     for (int i = 0; i < docCount - 1; ++i) {
-                        values.nextValue();
+                        values.nextDoubleValue();
                     }
-                    maxValue = Math.max(maxValue, values.nextValue());
+                    maxValue = Math.max(maxValue, values.nextDoubleValue());
                     hasValue = true;
                 }
             }

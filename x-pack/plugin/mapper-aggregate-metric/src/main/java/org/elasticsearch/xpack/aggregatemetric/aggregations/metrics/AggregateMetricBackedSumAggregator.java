@@ -76,7 +76,7 @@ class AggregateMetricBackedSumAggregator extends NumericMetricsAggregator.Single
                     kahanSummation.reset(sum, compensation);
 
                     for (int i = 0; i < valuesCount; i++) {
-                        double value = values.nextValue();
+                        double value = values.nextDoubleValue();
                         kahanSummation.add(value);
                     }
                     compensations.set(bucket, kahanSummation.delta());

@@ -77,7 +77,7 @@ public class MedianAbsoluteDeviationAggregator extends NumericMetricsAggregator.
                 if (values.advanceExact(doc)) {
                     final TDigestState valueSketch = getExistingOrNewHistogram(bigArrays(), bucket);
                     for (int i = 0; i < values.docValueCount(); i++) {
-                        valueSketch.add(values.nextValue());
+                        valueSketch.add(values.nextDoubleValue());
                     }
                 }
             }

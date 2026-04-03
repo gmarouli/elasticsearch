@@ -42,7 +42,7 @@ final class SingletonSortedNumericDoubleValues extends SortedNumericDoubleValues
     }
 
     @Override
-    public double nextValue() throws IOException {
+    public double nextDoubleValue() throws IOException {
         return in.doubleValue();
     }
 

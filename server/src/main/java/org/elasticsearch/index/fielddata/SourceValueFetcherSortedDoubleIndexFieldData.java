@@ -128,7 +128,7 @@ public class SourceValueFetcherSortedDoubleIndexFieldData extends SourceValueFet
         }
 
         @Override
-        public double nextValue() {
+        public double nextDoubleValue() {
             assert iterator.hasNext();
             return iterator.next();
         }

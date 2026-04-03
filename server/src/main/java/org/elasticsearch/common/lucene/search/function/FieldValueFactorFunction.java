@@ -67,7 +67,7 @@ public class FieldValueFactorFunction extends ScoreFunction {
             public double score(int docId, float subQueryScore) throws IOException {
                 double value;
                 if (values.advanceExact(docId)) {
-                    value = values.nextValue();
+                    value = values.nextDoubleValue();
                 } else {
                     if (missing != null) {
                         value = missing;

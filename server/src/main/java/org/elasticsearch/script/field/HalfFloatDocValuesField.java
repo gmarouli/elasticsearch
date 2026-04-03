@@ -44,7 +44,7 @@ public class HalfFloatDocValuesField extends AbstractScriptFieldFactory<Float>
         if (input.advanceExact(docId)) {
             resize(input.docValueCount());
             for (int i = 0; i < count; i++) {
-                values[i] = input.nextValue();
+                values[i] = input.nextDoubleValue();
             }
         } else {
             resize(0);

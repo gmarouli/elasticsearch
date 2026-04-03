@@ -154,7 +154,7 @@ class GeoLineBucketedSort extends BucketedSort.ForDoubles {
                     // There should always be one weight if advanceExact lands us here, either
                     // a real weight or a `missing` weight
                     assert docSortValues.docValueCount() == 1;
-                    docValue = docSortValues.nextValue();
+                    docValue = docSortValues.nextDoubleValue();
                     return true;
                 } else {
                     docValue = Long.MIN_VALUE;

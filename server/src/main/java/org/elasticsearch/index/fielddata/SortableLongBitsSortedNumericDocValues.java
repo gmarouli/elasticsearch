@@ -35,7 +35,7 @@ final class SortableLongBitsSortedNumericDocValues extends SortedNumericLongValu
 
     @Override
     public long nextValue() throws IOException {
-        return NumericUtils.doubleToSortableLong(values.nextValue());
+        return NumericUtils.doubleToSortableLong(values.nextDoubleValue());
     }
 
     @Override

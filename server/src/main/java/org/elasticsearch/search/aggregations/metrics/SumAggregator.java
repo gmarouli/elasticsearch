@@ -67,7 +67,7 @@ public class SumAggregator extends NumericMetricsAggregator.SingleDoubleValue {
         double value = sums.get(bucket);
         double delta = compensations.get(bucket);
         for (int i = 0; i < valueCount; i++) {
-            double added = values.nextValue();
+            double added = values.nextDoubleValue();
             value = addIfNonOrInf(added, value);
             if (Double.isFinite(value)) {
                 double correctedSum = added + delta;

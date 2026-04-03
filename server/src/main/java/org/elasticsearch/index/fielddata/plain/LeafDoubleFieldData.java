@@ -55,7 +55,7 @@ public abstract class LeafDoubleFieldData implements LeafNumericFieldData {
 
             @Override
             public Object nextValue() throws IOException {
-                return format.format(values.nextValue());
+                return format.format(values.nextDoubleValue());
             }
         };
     }

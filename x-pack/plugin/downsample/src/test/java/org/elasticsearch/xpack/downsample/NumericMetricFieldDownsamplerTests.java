@@ -230,7 +230,7 @@ public class NumericMetricFieldDownsamplerTests extends AggregatorTestCase {
             }
 
             @Override
-            public double nextValue() throws IOException {
+            public double nextDoubleValue() throws IOException {
                 return docIdToValue.get(currentDocId);
             }
 

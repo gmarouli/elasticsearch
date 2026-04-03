@@ -204,7 +204,7 @@ public class ScaledFloatFieldTypeTests extends FieldTypeTestCase {
             SortedNumericDoubleValues values = leafFieldData.getDoubleValues();
             assertTrue(values.advanceExact(0));
             assertEquals(1, values.docValueCount());
-            assertEquals(10 / f1.getScalingFactor(), values.nextValue(), 10e-5);
+            assertEquals(10 / f1.getScalingFactor(), values.nextDoubleValue(), 10e-5);
 
             // multi-valued
             ScaledFloatFieldMapper.ScaledFloatFieldType f2 = new ScaledFloatFieldMapper.ScaledFloatFieldType(
@@ -216,8 +216,8 @@ public class ScaledFloatFieldTypeTests extends FieldTypeTestCase {
             values = leafFieldData.getDoubleValues();
             assertTrue(values.advanceExact(0));
             assertEquals(2, values.docValueCount());
-            assertEquals(5 / f2.getScalingFactor(), values.nextValue(), 10e-5);
-            assertEquals(12 / f2.getScalingFactor(), values.nextValue(), 10e-5);
+            assertEquals(5 / f2.getScalingFactor(), values.nextDoubleValue(), 10e-5);
+            assertEquals(12 / f2.getScalingFactor(), values.nextDoubleValue(), 10e-5);
         }
         IOUtils.close(w, dir);
     }

@@ -78,7 +78,7 @@ public class PairedTTestAggregator extends TTestAggregator<PairedTTestState> {
                     // a real value or a `missing` value
                     assert docAValues.docValueCount() == 1;
                     assert docBValues.docValueCount() == 1;
-                    double diff = docAValues.nextValue() - docBValues.nextValue();
+                    double diff = docAValues.nextDoubleValue() - docBValues.nextDoubleValue();
                     statsBuilder.addValue(compDiffSum, compDiffSumOfSqr, bucket, diff);
                 }
             }

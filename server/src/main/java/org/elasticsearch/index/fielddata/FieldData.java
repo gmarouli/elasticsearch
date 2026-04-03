@@ -294,7 +294,7 @@ public enum FieldData {
             @Override
             public void get(List<CharSequence> list) throws IOException {
                 for (int i = 0, count = values.docValueCount(); i < count; ++i) {
-                    list.add(Double.toString(values.nextValue()));
+                    list.add(Double.toString(values.nextDoubleValue()));
                 }
             }
         });
@@ -522,7 +522,7 @@ public enum FieldData {
         }
 
         @Override
-        public double nextValue() throws IOException {
+        public double nextDoubleValue() throws IOException {
             return values.nextValue();
         }
 
@@ -572,7 +572,7 @@ public enum FieldData {
 
         @Override
         public long nextValue() throws IOException {
-            return (long) values.nextValue();
+            return (long) values.nextDoubleValue();
         }
 
     }

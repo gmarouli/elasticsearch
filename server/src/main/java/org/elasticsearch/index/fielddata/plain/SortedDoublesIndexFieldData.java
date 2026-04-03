@@ -217,7 +217,7 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
         }
 
         @Override
-        public double nextValue() throws IOException {
+        public double nextDoubleValue() throws IOException {
             return HalfFloatPoint.sortableShortToHalfFloat((short) in.nextValue());
         }
 
@@ -310,7 +310,7 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
         }
 
         @Override
-        public double nextValue() throws IOException {
+        public double nextDoubleValue() throws IOException {
             return NumericUtils.sortableIntToFloat((int) in.nextValue());
         }
 

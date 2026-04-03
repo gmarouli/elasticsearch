@@ -98,7 +98,7 @@ public class NumericHistogramAggregator extends AbstractHistogramAggregator {
                 if (values.advanceExact(doc)) {
                     double previousKey = Double.NEGATIVE_INFINITY;
                     for (int i = 0; i < values.docValueCount(); ++i) {
-                        final double key = Math.floor((values.nextValue() - offset) / interval);
+                        final double key = Math.floor((values.nextDoubleValue() - offset) / interval);
                         assert key >= previousKey;
                         if (key == previousKey) {
                             continue;

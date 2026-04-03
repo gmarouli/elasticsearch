@@ -83,7 +83,7 @@ public class NumericRateAggregator extends AbstractRateAggregator {
                         switch (rateMode) {
                             case SUM:
                                 for (int i = 0; i < valuesCount; i++) {
-                                    kahanSummation.add(values.nextValue());
+                                    kahanSummation.add(values.nextDoubleValue());
                                 }
                                 break;
                             case VALUE_COUNT:

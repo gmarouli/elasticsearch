@@ -50,8 +50,8 @@ class HistogramValuesSource extends ValuesSource.Numeric {
     private SortedNumericDoubleValues doubleMultiValues(SortedNumericDoubleValues values) {
         return new SortedNumericDoubleValues() {
             @Override
-            public double nextValue() throws IOException {
-                return Math.floor(values.nextValue() / interval) * interval;
+            public double nextDoubleValue() throws IOException {
+                return Math.floor(values.nextDoubleValue() / interval) * interval;
             }
 
             @Override

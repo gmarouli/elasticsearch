@@ -64,7 +64,7 @@ class AggregateMetricBackedValueCountAggregator extends NumericMetricsAggregator
                 counts = bigArrays.grow(counts, bucket + 1);
                 if (values.advanceExact(doc)) {
                     for (int i = 0; i < values.docValueCount(); i++) { // For aggregate metric this should always equal to 1
-                        long value = Double.valueOf(values.nextValue()).longValue();
+                        long value = Double.valueOf(values.nextDoubleValue()).longValue();
                         counts.increment(bucket, value);
                     }
                 }

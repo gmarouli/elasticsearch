@@ -33,7 +33,7 @@ public final class DoubleScriptDocValues extends SortedNumericDoubleValues {
     }
 
     @Override
-    public double nextValue() {
+    public double nextDoubleValue() {
         return script.values()[cursor++];
     }
 

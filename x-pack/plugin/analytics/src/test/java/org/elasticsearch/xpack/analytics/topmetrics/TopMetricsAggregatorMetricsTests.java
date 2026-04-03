@@ -113,7 +113,7 @@ public class TopMetricsAggregatorMetricsTests extends ESTestCase {
         SortedNumericDoubleValues values = mock(SortedNumericDoubleValues.class);
         when(values.advanceExact(0)).thenReturn(true);
         when(values.docValueCount()).thenReturn(1);
-        when(values.nextValue()).thenReturn(value);
+        when(values.nextDoubleValue()).thenReturn(value);
         ValuesSourceConfig config = toConfig(values);
         withMetric(config, m -> {
             m.loader(null).loadFromDoc(0, 0);
@@ -154,7 +154,7 @@ public class TopMetricsAggregatorMetricsTests extends ESTestCase {
         when(values.advanceExact(0)).thenReturn(true);
         when(values.advanceExact(1)).thenReturn(true);
         when(values.docValueCount()).thenReturn(1);
-        when(values.nextValue()).thenReturn(firstValue, secondValue);
+        when(values.nextDoubleValue()).thenReturn(firstValue, secondValue);
         ValuesSourceConfig config = toConfig(values);
         withMetric(config, m -> assertLoadTwoAndSwap(m, config, SortValue.from(firstValue), SortValue.from(secondValue), true));
     }

@@ -291,7 +291,7 @@ class TimeSeriesGeoLineBuckets implements Releasable {
                     throw AggregationErrors.unsupportedMultivalue();
                 }
                 assert docSortValues.docValueCount() == 1;
-                simplifier.currentSortValue = docSortValues.nextValue();
+                simplifier.currentSortValue = docSortValues.nextDoubleValue();
                 return true;
             }
             return false;

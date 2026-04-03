@@ -454,7 +454,7 @@ public class AggregateMetricDoubleFieldMapper extends FieldMapper {
                                     }
 
                                     @Override
-                                    public double nextValue() throws IOException {
+                                    public double nextDoubleValue() throws IOException {
                                         double sum = NumericUtils.sortableLongToDouble(sumValues.nextValue());
                                         long count = countValues.nextValue();
                                         return count == 0 ? Double.NaN : sum / count;
@@ -561,7 +561,7 @@ public class AggregateMetricDoubleFieldMapper extends FieldMapper {
             }
 
             @Override
-            public double nextValue() throws IOException {
+            public double nextDoubleValue() throws IOException {
                 long v = values.nextValue();
                 if (metric == Metric.value_count) {
                     // Only value_count metrics are encoded as integers

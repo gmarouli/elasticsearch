@@ -32,7 +32,7 @@ final class SortableLongBitsToSortedNumericDoubleValues extends SortedNumericDou
     }
 
     @Override
-    public double nextValue() throws IOException {
+    public double nextDoubleValue() throws IOException {
         return NumericUtils.sortableLongToDouble(values.nextValue());
     }
 

@@ -541,7 +541,7 @@ public class VariableWidthHistogramAggregator extends DeferableBucketAggregator 
                 if (values.advanceExact(doc)) {
                     double prevVal = Double.NEGATIVE_INFINITY;
                     for (int i = 0; i < values.docValueCount(); ++i) {
-                        double val = values.nextValue();
+                        double val = values.nextDoubleValue();
                         assert val >= prevVal;
                         if (val == prevVal) {
                             continue;

@@ -663,7 +663,7 @@ public abstract class RangeAggregator extends BucketsAggregator {
                     if (values.advanceExact(doc)) {
                         final int valuesCount = values.docValueCount();
                         for (int i = 0, lo = 0; i < valuesCount; ++i) {
-                            final double value = values.nextValue();
+                            final double value = values.nextDoubleValue();
                             lo = NumericRangeAggregator.this.collect(sub, doc, value, bucket, lo);
                         }
                     }

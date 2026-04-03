@@ -171,7 +171,7 @@ public abstract class ScriptDocValues<T> extends AbstractList<T> {
             if (in.advanceExact(docId)) {
                 resize(in.docValueCount());
                 for (int i = 0; i < count; i++) {
-                    values[i] = in.nextValue();
+                    values[i] = in.nextDoubleValue();
                 }
             } else {
                 resize(0);

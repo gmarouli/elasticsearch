@@ -73,7 +73,7 @@ public class FieldDataTests extends ESTestCase {
         };
 
         asMultiDoubles = FieldData.sortableLongBitsToDoubles(multiValues);
-        assertEquals(value, asMultiDoubles.nextValue(), 0);
+        assertEquals(value, asMultiDoubles.nextDoubleValue(), 0);
         assertSame(multiValues, FieldData.toSortableLongBits(asMultiDoubles));
     }
 
@@ -101,7 +101,7 @@ public class FieldDataTests extends ESTestCase {
 
         SortedNumericDoubleValues multiValues = new SortedNumericDoubleValues() {
             @Override
-            public double nextValue() {
+            public double nextDoubleValue() {
                 return value;
             }
 

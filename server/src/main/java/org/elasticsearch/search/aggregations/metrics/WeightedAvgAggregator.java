@@ -86,7 +86,7 @@ class WeightedAvgAggregator extends NumericMetricsAggregator.SingleValue {
                     // There should always be one weight if advanceExact lands us here, either
                     // a real weight or a `missing` weight
                     assert docWeights.docValueCount() == 1;
-                    final double weight = docWeights.nextValue();
+                    final double weight = docWeights.nextDoubleValue();
 
                     final int numValues = docValues.docValueCount();
                     assert numValues > 0;
@@ -100,7 +100,7 @@ class WeightedAvgAggregator extends NumericMetricsAggregator.SingleValue {
                     compensatedWeightSum.reset(weightSum, weightCompensation);
 
                     for (int i = 0; i < numValues; i++) {
-                        compensatedValueSum.add(docValues.nextValue() * weight);
+                        compensatedValueSum.add(docValues.nextDoubleValue() * weight);
                         compensatedWeightSum.add(weight);
                     }
 

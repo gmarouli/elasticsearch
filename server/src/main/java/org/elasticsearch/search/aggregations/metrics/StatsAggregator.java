@@ -65,7 +65,7 @@ class StatsAggregator extends NumericMetricsAggregator.MultiDoubleValue {
                     // accurate than naive summation.
                     kahanSummation.reset(sums.get(bucket), compensations.get(bucket));
                     for (int i = 0; i < valuesCount; i++) {
-                        double value = values.nextValue();
+                        double value = values.nextDoubleValue();
                         kahanSummation.add(value);
                         min = Math.min(min, value);
                         max = Math.max(max, value);

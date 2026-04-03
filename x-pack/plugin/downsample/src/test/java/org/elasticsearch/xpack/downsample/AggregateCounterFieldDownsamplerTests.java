@@ -287,7 +287,7 @@ public class AggregateCounterFieldDownsamplerTests extends ESTestCase {
             }
 
             @Override
-            public double nextValue() {
+            public double nextDoubleValue() {
                 return docIdToValue.get(currentDocId);
             }
 

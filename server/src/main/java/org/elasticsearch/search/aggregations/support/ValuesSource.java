@@ -583,7 +583,7 @@ public abstract class ValuesSource {
                         resize(doubleValues.docValueCount());
                         script.setDocument(target);
                         for (int i = 0; i < docValueCount(); ++i) {
-                            script.setNextAggregationValue(doubleValues.nextValue());
+                            script.setNextAggregationValue(doubleValues.nextDoubleValue());
                             values[i] = script.runAsDouble();
                         }
                         sort();

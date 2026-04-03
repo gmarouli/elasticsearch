@@ -63,7 +63,7 @@ public class UnsignedLongLeafFieldData implements LeafNumericFieldData {
                 }
 
                 @Override
-                public double nextValue() throws IOException {
+                public double nextDoubleValue() throws IOException {
                     return convertUnsignedLongToDouble(values.nextValue());
                 }
 

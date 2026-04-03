@@ -85,7 +85,7 @@ class AggregateMetricBackedAvgAggregator extends NumericMetricsAggregator.Single
 
                     kahanSummation.reset(sum, compensation);
                     for (int i = 0; i < aggregateSums.docValueCount(); i++) {
-                        double value = aggregateSums.nextValue();
+                        double value = aggregateSums.nextDoubleValue();
                         kahanSummation.add(value);
                     }
 
@@ -97,7 +97,7 @@ class AggregateMetricBackedAvgAggregator extends NumericMetricsAggregator.Single
                 // Read aggregate values for value_count
                 if (aggregateValueCounts.advanceExact(doc)) {
                     for (int i = 0; i < aggregateValueCounts.docValueCount(); i++) {
-                        double d = aggregateValueCounts.nextValue();
+                        double d = aggregateValueCounts.nextDoubleValue();
                         long value = Double.valueOf(d).longValue();
                         counts.increment(bucket, value);
                     }

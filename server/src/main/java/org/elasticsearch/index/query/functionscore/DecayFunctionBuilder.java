@@ -493,7 +493,7 @@ public abstract class DecayFunctionBuilder<DFB extends DecayFunctionBuilder<DFB>
                         int n = doubleValues.docValueCount();
                         resize(n);
                         for (int i = 0; i < n; i++) {
-                            values[i] = Math.max(0.0d, Math.abs(doubleValues.nextValue() - origin) - offset);
+                            values[i] = Math.max(0.0d, Math.abs(doubleValues.nextDoubleValue() - origin) - offset);
                         }
                         sort();
                         return true;
@@ -513,7 +513,7 @@ public abstract class DecayFunctionBuilder<DFB extends DecayFunctionBuilder<DFB>
             if (doubleValues.advanceExact(docId)) {
                 final int num = doubleValues.docValueCount();
                 for (int i = 0; i < num; i++) {
-                    double value = doubleValues.nextValue();
+                    double value = doubleValues.nextDoubleValue();
                     values.append("Math.max(Math.abs(");
                     values.append(value).append("(=doc value) - ");
                     values.append(origin).append("(=origin))) - ");

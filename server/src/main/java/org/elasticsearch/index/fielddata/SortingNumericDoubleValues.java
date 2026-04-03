@@ -66,7 +66,7 @@ public abstract class SortingNumericDoubleValues extends SortedNumericDoubleValu
     }
 
     @Override
-    public final double nextValue() {
+    public final double nextDoubleValue() {
         return values[valuesCursor++];
     }
 }

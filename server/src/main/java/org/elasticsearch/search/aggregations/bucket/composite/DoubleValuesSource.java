@@ -169,7 +169,7 @@ class DoubleValuesSource extends SingleDimensionValuesSource<Double> {
                     int num = dvs.docValueCount();
                     double previous = Double.MAX_VALUE;
                     for (int i = 0; i < num; i++) {
-                        currentValue = dvs.nextValue();
+                        currentValue = dvs.nextDoubleValue();
                         missingCurrentValue = false;
                         if (i == 0 || previous != currentValue) {
                             next.collect(doc, bucket);

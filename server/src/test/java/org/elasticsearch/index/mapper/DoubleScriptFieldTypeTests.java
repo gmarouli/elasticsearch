@@ -108,7 +108,7 @@ public class DoubleScriptFieldTypeTests extends AbstractNonTextScriptFieldTypeTe
                             public void collect(int doc) throws IOException {
                                 if (dv.advanceExact(doc)) {
                                     for (int i = 0; i < dv.docValueCount(); i++) {
-                                        results.add(dv.nextValue());
+                                        results.add(dv.nextDoubleValue());
                                     }
                                 }
                             }

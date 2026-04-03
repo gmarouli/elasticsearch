@@ -440,7 +440,7 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
 
             @Override
             public long nextValue() throws IOException {
-                return BitMixer.mix64(java.lang.Double.doubleToLongBits(values.nextValue()));
+                return BitMixer.mix64(java.lang.Double.doubleToLongBits(values.nextDoubleValue()));
             }
         }
 

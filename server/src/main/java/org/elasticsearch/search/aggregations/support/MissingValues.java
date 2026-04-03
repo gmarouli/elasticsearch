@@ -174,9 +174,9 @@ public enum MissingValues {
             }
 
             @Override
-            public double nextValue() throws IOException {
+            public double nextDoubleValue() throws IOException {
                 if (count > 0) {
-                    return values.nextValue();
+                    return values.nextDoubleValue();
                 } else {
                     return missing;
                 }

@@ -95,7 +95,7 @@ abstract sealed class NumericMetricFieldDownsampler extends AbstractFieldDownsam
                 isEmpty = false;
                 int docValuesCount = docValues.docValueCount();
                 for (int j = 0; j < docValuesCount; j++) {
-                    double value = docValues.nextValue();
+                    double value = docValues.nextDoubleValue();
                     this.max = Math.max(value, max);
                     this.min = Math.min(value, min);
                     sum.add(value);
@@ -148,7 +148,7 @@ abstract sealed class NumericMetricFieldDownsampler extends AbstractFieldDownsam
                 int docId = docIdBuffer.get(i);
                 if (docValues.advanceExact(docId)) {
                     isEmpty = false;
-                    lastValue = docValues.nextValue();
+                    lastValue = docValues.nextDoubleValue();
                     return;
                 }
             }
@@ -209,7 +209,7 @@ abstract sealed class NumericMetricFieldDownsampler extends AbstractFieldDownsam
                 assert docValuesCount > 0;
                 isEmpty = false;
 
-                var currentCounterValue = counterDocValues.nextValue();
+                var currentCounterValue = counterDocValues.nextDoubleValue();
                 // If this the first time we encounter a value for this tsid
                 if (Double.isNaN(previousValue)) {
                     downsampledValue = currentCounterValue;

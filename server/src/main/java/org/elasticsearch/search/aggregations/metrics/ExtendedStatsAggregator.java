@@ -85,7 +85,7 @@ class ExtendedStatsAggregator extends NumericMetricsAggregator.MultiDoubleValue 
                     compensatedSumOfSqr.reset(sumOfSqrs.get(bucket), compensationOfSqrs.get(bucket));
 
                     for (int i = 0; i < valuesCount; i++) {
-                        double value = values.nextValue();
+                        double value = values.nextDoubleValue();
                         compensatedSum.add(value);
                         compensatedSumOfSqr.add(value * value);
                         min = Math.min(min, value);

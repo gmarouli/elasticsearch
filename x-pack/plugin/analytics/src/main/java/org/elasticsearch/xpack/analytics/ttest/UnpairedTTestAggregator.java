@@ -100,7 +100,7 @@ public class UnpairedTTestAggregator extends TTestAggregator<UnpairedTTestState>
                     builder.grow(bigArrays(), bucket + 1);
                     final int numValues = docValues.docValueCount();
                     for (int i = 0; i < numValues; i++) {
-                        builder.addValue(compSum, compSumOfSqr, bucket, docValues.nextValue());
+                        builder.addValue(compSum, compSumOfSqr, bucket, docValues.nextDoubleValue());
                     }
                 }
             }

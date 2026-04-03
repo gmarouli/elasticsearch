@@ -61,7 +61,7 @@ abstract sealed class AggregateMetricDoubleFieldDownsampler extends NumericMetri
                 isEmpty = false;
                 int docValuesCount = docValues.docValueCount();
                 for (int j = 0; j < docValuesCount; j++) {
-                    double value = docValues.nextValue();
+                    double value = docValues.nextDoubleValue();
                     switch (metric) {
                         case min -> min = Math.min(value, min);
                         case max -> max = Math.max(value, max);
@@ -124,11 +124,11 @@ abstract sealed class AggregateMetricDoubleFieldDownsampler extends NumericMetri
                 assert docValuesCount > 0;
                 isEmpty = false;
                 if (docValuesCount == 1 || supportsMultiValue == false) {
-                    lastValue = docValues.nextValue();
+                    lastValue = docValues.nextDoubleValue();
                 } else {
                     var values = new Object[docValuesCount];
                     for (int j = 0; j < docValuesCount; j++) {
-                        values[j] = docValues.nextValue();
+                        values[j] = docValues.nextDoubleValue();
                     }
                     lastValue = values;
                 }
