@@ -250,7 +250,7 @@ abstract class AutoDateHistogramAggregator extends DeferableBucketAggregator {
 
                     long previousRounded = Long.MIN_VALUE;
                     for (int i = 0; i < valuesCount; ++i) {
-                        long value = values.nextValue();
+                        long value = values.nextLongValue();
                         long rounded = preparedRounding.round(value);
                         assert rounded >= previousRounded;
                         if (rounded == previousRounded) {
@@ -472,7 +472,7 @@ abstract class AutoDateHistogramAggregator extends DeferableBucketAggregator {
                     long previousRounded = Long.MIN_VALUE;
                     int roundingIdx = roundingIndexFor(owningBucketOrd);
                     for (int i = 0; i < valuesCount; ++i) {
-                        long value = values.nextValue();
+                        long value = values.nextLongValue();
                         long rounded = preparedRoundings[roundingIdx].round(value);
                         assert rounded >= previousRounded;
                         if (rounded == previousRounded) {

@@ -128,7 +128,7 @@ public class SourceValueFetcherSortedNumericIndexFieldData extends SourceValueFe
         }
 
         @Override
-        public long nextValue() {
+        public long nextLongValue() {
             assert iterator.hasNext();
             return iterator.next();
         }

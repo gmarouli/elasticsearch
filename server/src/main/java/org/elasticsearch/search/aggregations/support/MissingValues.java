@@ -123,9 +123,9 @@ public enum MissingValues {
             private int count;
 
             @Override
-            public long nextValue() throws IOException {
+            public long nextLongValue() throws IOException {
                 if (count > 0) {
-                    return values.nextValue();
+                    return values.nextLongValue();
                 } else {
                     return missing;
                 }

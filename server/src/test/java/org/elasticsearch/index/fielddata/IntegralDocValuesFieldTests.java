@@ -110,7 +110,7 @@ public class IntegralDocValuesFieldTests extends ESTestCase {
             }
 
             @Override
-            public long nextValue() {
+            public long nextLongValue() {
                 return current[i++];
             }
         };

@@ -101,7 +101,7 @@ public final class NumericTermsAggregator extends TermsAggregator {
                 if (values.advanceExact(doc)) {
                     long previous = Long.MAX_VALUE;
                     for (int i = 0; i < values.docValueCount(); ++i) {
-                        long val = values.nextValue();
+                        long val = values.nextLongValue();
                         if (previous != val || i == 0) {
                             collectValue(val, doc, owningBucketOrd, sub);
                             previous = val;
@@ -342,7 +342,7 @@ public final class NumericTermsAggregator extends TermsAggregator {
                     if (values.advanceExact(docId)) {
                         int valueCount = values.docValueCount();
                         for (int v = 0; v < valueCount; ++v) {
-                            long value = values.nextValue();
+                            long value = values.nextLongValue();
                             if (longFilter == null || longFilter.accept(value)) {
                                 bucketOrds.add(owningBucketOrd, value);
                             }

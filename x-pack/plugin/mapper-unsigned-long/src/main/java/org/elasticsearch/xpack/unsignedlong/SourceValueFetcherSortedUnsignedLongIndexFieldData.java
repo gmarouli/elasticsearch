@@ -139,7 +139,7 @@ public class SourceValueFetcherSortedUnsignedLongIndexFieldData extends SourceVa
         }
 
         @Override
-        public long nextValue() throws IOException {
+        public long nextLongValue() throws IOException {
             assert iterator.hasNext();
             return iterator.next();
         }

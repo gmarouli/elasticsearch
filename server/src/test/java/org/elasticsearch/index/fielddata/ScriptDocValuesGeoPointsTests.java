@@ -27,7 +27,7 @@ public class ScriptDocValuesGeoPointsTests extends ESTestCase {
             int i;
 
             @Override
-            public long nextValue() {
+            public long nextLongValue() {
                 return current[i++].getEncoded();
             }
 

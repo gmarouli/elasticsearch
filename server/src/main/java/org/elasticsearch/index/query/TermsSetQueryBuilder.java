@@ -446,7 +446,7 @@ public final class TermsSetQueryBuilder extends LeafQueryBuilder<TermsSetQueryBu
                     boolean hasValue = values.advanceExact(doc);
                     if (hasValue) {
                         assert values.docValueCount() == 1;
-                        current = values.nextValue();
+                        current = values.nextLongValue();
                         return true;
                     } else {
                         return false;

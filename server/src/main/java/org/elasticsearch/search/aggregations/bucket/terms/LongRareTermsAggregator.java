@@ -82,7 +82,7 @@ public class LongRareTermsAggregator extends AbstractRareTermsAggregator {
                 if (values.advanceExact(docId)) {
                     long previous = Long.MAX_VALUE;
                     for (int i = 0; i < values.docValueCount(); ++i) {
-                        long val = values.nextValue();
+                        long val = values.nextLongValue();
                         if (i == 0 && previous == val) {
                             continue;
                         }

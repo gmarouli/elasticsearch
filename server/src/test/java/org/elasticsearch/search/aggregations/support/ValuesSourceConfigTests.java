@@ -286,7 +286,7 @@ public class ValuesSourceConfigTests extends MapperServiceTestCase {
             SortedNumericLongValues values = valuesSource.longValues(ctx);
             assertTrue(values.advanceExact(0));
             assertEquals(1, values.docValueCount());
-            assertEquals(42, values.nextValue());
+            assertEquals(42, values.nextLongValue());
             assertTrue(config.alignsWithSearchIndex());
         });
     }
@@ -307,7 +307,7 @@ public class ValuesSourceConfigTests extends MapperServiceTestCase {
             values = valuesSource.longValues(ctx);
             assertTrue(values.advanceExact(0));
             assertEquals(1, values.docValueCount());
-            assertEquals(42, values.nextValue());
+            assertEquals(42, values.nextLongValue());
             assertFalse(config.alignsWithSearchIndex());
         });
     }
@@ -328,7 +328,7 @@ public class ValuesSourceConfigTests extends MapperServiceTestCase {
             SortedNumericLongValues values = valuesSource.longValues(ctx);
             assertTrue(values.advanceExact(0));
             assertEquals(1, values.docValueCount());
-            assertEquals(42, values.nextValue());
+            assertEquals(42, values.nextLongValue());
             assertFalse(config.alignsWithSearchIndex());
         });
     }
@@ -343,7 +343,7 @@ public class ValuesSourceConfigTests extends MapperServiceTestCase {
             SortedNumericLongValues values = valuesSource.longValues(ctx);
             assertTrue(values.advanceExact(0));
             assertEquals(1, values.docValueCount());
-            assertEquals(1, values.nextValue());
+            assertEquals(1, values.nextLongValue());
             assertTrue(config.alignsWithSearchIndex());
         });
     }
@@ -364,7 +364,7 @@ public class ValuesSourceConfigTests extends MapperServiceTestCase {
             values = valuesSource.longValues(ctx);
             assertTrue(values.advanceExact(0));
             assertEquals(1, values.docValueCount());
-            assertEquals(1, values.nextValue());
+            assertEquals(1, values.nextLongValue());
             assertFalse(config.alignsWithSearchIndex());
         });
     }
@@ -385,7 +385,7 @@ public class ValuesSourceConfigTests extends MapperServiceTestCase {
             SortedNumericLongValues values = valuesSource.longValues(ctx);
             assertTrue(values.advanceExact(0));
             assertEquals(1, values.docValueCount());
-            assertEquals(1, values.nextValue());
+            assertEquals(1, values.nextLongValue());
             assertFalse(config.alignsWithSearchIndex());
         });
     }

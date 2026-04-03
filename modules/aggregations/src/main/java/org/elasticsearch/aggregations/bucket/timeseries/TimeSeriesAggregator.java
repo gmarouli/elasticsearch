@@ -125,7 +125,7 @@ public class TimeSeriesAggregator extends BucketsAggregator {
                 dimensionConsumers.put(entry.getKey(), (docId, tsidBuilder) -> {
                     if (docValues.advanceExact(docId)) {
                         assert docValues.docValueCount() == 1 : "Dimension field cannot be a multi-valued field";
-                        tsidBuilder.addLong(fieldName, docValues.nextValue());
+                        tsidBuilder.addLong(fieldName, docValues.nextLongValue());
                     }
                 });
             } else {

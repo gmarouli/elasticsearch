@@ -103,7 +103,7 @@ public abstract class SortingNumericLongValues extends SortedNumericLongValues {
     }
 
     @Override
-    public final long nextValue() {
+    public final long nextLongValue() {
         return values[valuesCursor++];
     }
 }

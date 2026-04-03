@@ -293,8 +293,8 @@ public abstract class IndexNumericFieldData implements IndexFieldData<LeafNumeri
             }
 
             @Override
-            public long nextValue() throws IOException {
-                return converter.applyAsLong(values.nextValue());
+            public long nextLongValue() throws IOException {
+                return converter.applyAsLong(values.nextLongValue());
             }
 
             @Override

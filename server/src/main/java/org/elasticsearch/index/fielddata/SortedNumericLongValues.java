@@ -31,7 +31,7 @@ public abstract class SortedNumericLongValues {
         }
 
         @Override
-        public long nextValue() {
+        public long nextLongValue() {
             throw new UnsupportedOperationException();
         }
 
@@ -52,7 +52,7 @@ public abstract class SortedNumericLongValues {
      * Iterates to the next value in the current document. Do not call this more than
      * {@link #docValueCount} times for the document.
      */
-    public abstract long nextValue() throws IOException;
+    public abstract long nextLongValue() throws IOException;
 
     /**
      * Retrieves the number of values for the current document.  This must always
@@ -94,7 +94,7 @@ public abstract class SortedNumericLongValues {
         }
 
         @Override
-        public long nextValue() throws IOException {
+        public long nextLongValue() throws IOException {
             return values.longValue();
         }
 
@@ -133,7 +133,7 @@ public abstract class SortedNumericLongValues {
             }
 
             @Override
-            public long nextValue() throws IOException {
+            public long nextLongValue() throws IOException {
                 return values.nextValue();
             }
 

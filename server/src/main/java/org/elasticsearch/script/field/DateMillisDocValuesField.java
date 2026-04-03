@@ -44,7 +44,7 @@ public class DateMillisDocValuesField extends AbstractScriptFieldFactory<ZonedDa
         if (input.advanceExact(docId)) {
             resize(input.docValueCount());
             for (int i = 0; i < count; i++) {
-                values[i] = ZonedDateTime.ofInstant(Instant.ofEpochMilli(input.nextValue()), ZoneOffset.UTC);
+                values[i] = ZonedDateTime.ofInstant(Instant.ofEpochMilli(input.nextLongValue()), ZoneOffset.UTC);
             }
         } else {
             resize(0);

@@ -184,7 +184,7 @@ class LongValuesSource extends SingleDimensionValuesSource<Long> {
                     int num = dvs.docValueCount();
                     long previous = Long.MAX_VALUE;
                     for (int i = 0; i < num; i++) {
-                        currentValue = dvs.nextValue();
+                        currentValue = dvs.nextLongValue();
                         missingCurrentValue = false;
                         if (i == 0 || previous != currentValue) {
                             next.collect(doc, bucket);

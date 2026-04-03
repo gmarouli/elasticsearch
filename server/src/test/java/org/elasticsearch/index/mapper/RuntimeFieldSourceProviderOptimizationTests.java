@@ -94,7 +94,7 @@ public class RuntimeFieldSourceProviderOptimizationTests extends ESSingleNodeTes
                     boolean result = sortedNumericDocValues.advanceExact(i);
                     assertThat(result, equalTo(true));
                     assertThat(sortedNumericDocValues.docValueCount(), equalTo(1));
-                    assertThat(sortedNumericDocValues.nextValue(), equalTo((long) i));
+                    assertThat(sortedNumericDocValues.nextLongValue(), equalTo((long) i));
                 }
             }
         }
@@ -145,7 +145,7 @@ public class RuntimeFieldSourceProviderOptimizationTests extends ESSingleNodeTes
                     boolean result = sortedNumericDocValues.advanceExact(i);
                     assertThat(result, equalTo(true));
                     assertThat(sortedNumericDocValues.docValueCount(), equalTo(1));
-                    assertThat(sortedNumericDocValues.nextValue(), equalTo((long) i));
+                    assertThat(sortedNumericDocValues.nextLongValue(), equalTo((long) i));
                 }
             }
         }

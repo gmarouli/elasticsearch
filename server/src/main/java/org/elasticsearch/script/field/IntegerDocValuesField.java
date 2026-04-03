@@ -41,7 +41,7 @@ public class IntegerDocValuesField extends AbstractScriptFieldFactory<Integer>
         if (input.advanceExact(docId)) {
             resize(input.docValueCount());
             for (int i = 0; i < count; i++) {
-                values[i] = (int) input.nextValue();
+                values[i] = (int) input.nextLongValue();
             }
         } else {
             resize(0);

@@ -64,7 +64,7 @@ public final class GeoPointScriptDocValues extends SortedNumericLongValues {
     }
 
     @Override
-    public long nextValue() {
+    public long nextLongValue() {
         int lat = GeoEncodingUtils.encodeLatitude(script.lats()[cursor]);
         int lon = GeoEncodingUtils.encodeLongitude(script.lons()[cursor++]);
         return (((long) lat) << 32) | (lon & 0xFFFFFFFFL);

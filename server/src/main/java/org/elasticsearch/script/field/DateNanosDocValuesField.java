@@ -44,7 +44,7 @@ public class DateNanosDocValuesField extends AbstractScriptFieldFactory<ZonedDat
         if (input.advanceExact(docId)) {
             resize(input.docValueCount());
             for (int i = 0; i < count; i++) {
-                values[i] = ZonedDateTime.ofInstant(DateUtils.toInstant(input.nextValue()), ZoneOffset.UTC);
+                values[i] = ZonedDateTime.ofInstant(DateUtils.toInstant(input.nextLongValue()), ZoneOffset.UTC);
             }
         } else {
             resize(0);

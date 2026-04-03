@@ -404,7 +404,7 @@ class MultiTermsAggregator extends DeferableBucketAggregator {
                     final int valuesCount = values.docValueCount();
                     long previous = Long.MAX_VALUE;
                     for (int i = 0; i < valuesCount; ++i) {
-                        final long val = values.nextValue();
+                        final long val = values.nextLongValue();
                         if (previous != val || i == 0) {
                             objects.add(val);
                             previous = val;

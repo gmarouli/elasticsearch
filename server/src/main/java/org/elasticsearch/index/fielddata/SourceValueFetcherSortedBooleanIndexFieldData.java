@@ -128,7 +128,7 @@ public class SourceValueFetcherSortedBooleanIndexFieldData extends SourceValueFe
         }
 
         @Override
-        public long nextValue() {
+        public long nextLongValue() {
             assert iteratorIndex < trueCount + falseCount;
             return iteratorIndex++ < falseCount ? 0L : 1L;
         }

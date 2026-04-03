@@ -300,7 +300,7 @@ class DateHistogramAggregator extends BucketsAggregator implements SizedBucketAg
                 if (values.advanceExact(doc)) {
                     long previousRounded = Long.MIN_VALUE;
                     for (int i = 0; i < values.docValueCount(); ++i) {
-                        final long rounded = preparedRounding.round(values.nextValue());
+                        final long rounded = preparedRounding.round(values.nextLongValue());
                         assert rounded >= previousRounded;
                         if (rounded == previousRounded) {
                             continue;

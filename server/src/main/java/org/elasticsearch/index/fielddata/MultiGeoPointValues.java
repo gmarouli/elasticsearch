@@ -37,7 +37,7 @@ public class MultiGeoPointValues extends MultiPointValues<GeoPoint> {
 
     @Override
     public GeoPoint nextValue() throws IOException {
-        return point.resetFromEncoded(numericValues.nextValue());
+        return point.resetFromEncoded(numericValues.nextLongValue());
     }
 
     /**

@@ -418,7 +418,7 @@ public abstract class ItemSetMapReduceValueSource {
                     final int valuesCount = values.docValueCount();
 
                     if (valuesCount == 1) {
-                        final long v = values.nextValue();
+                        final long v = values.nextLongValue();
                         if (longFilter == null || longFilter.accept(v)) {
                             return new Tuple<>(field, Collections.singletonList(v));
                         }
@@ -427,7 +427,7 @@ public abstract class ItemSetMapReduceValueSource {
 
                     final List<Object> objects = new ArrayList<>(valuesCount);
                     for (int i = 0; i < valuesCount; ++i) {
-                        final long v = values.nextValue();
+                        final long v = values.nextLongValue();
                         if (longFilter == null || longFilter.accept(v)) {
                             objects.add(v);
                         }

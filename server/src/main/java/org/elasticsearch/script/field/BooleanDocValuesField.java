@@ -44,7 +44,7 @@ public class BooleanDocValuesField extends AbstractScriptFieldFactory<Boolean>
         if (input.advanceExact(docId)) {
             resize(input.docValueCount());
             for (int i = 0; i < count; i++) {
-                values[i] = input.nextValue() == 1L;
+                values[i] = input.nextLongValue() == 1L;
             }
         } else {
             resize(0);

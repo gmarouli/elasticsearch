@@ -27,7 +27,7 @@ public final class BooleanScriptDocValues extends SortedNumericLongValues {
     }
 
     @Override
-    public long nextValue() {
+    public long nextLongValue() {
         // Emit all false values before all true values
         return cursor++ < script.falses() ? 0 : 1;
     }

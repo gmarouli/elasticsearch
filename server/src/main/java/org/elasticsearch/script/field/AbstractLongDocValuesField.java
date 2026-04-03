@@ -56,7 +56,7 @@ public abstract class AbstractLongDocValuesField extends AbstractScriptFieldFact
         if (input.advanceExact(docId)) {
             resize(input.docValueCount());
             for (int i = 0; i < count; i++) {
-                values[i] = formatLong(input.nextValue());
+                values[i] = formatLong(input.nextLongValue());
             }
         } else {
             resize(0);

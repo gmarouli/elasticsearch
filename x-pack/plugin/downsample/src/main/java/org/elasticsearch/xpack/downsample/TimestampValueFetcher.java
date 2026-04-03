@@ -42,7 +42,7 @@ class TimestampValueFetcher {
             }
             int docValuesCount = timestampDocValues.docValueCount();
             assert docValuesCount == 1;
-            timestamps[i] = timestampDocValues.nextValue();
+            timestamps[i] = timestampDocValues.nextLongValue();
         }
         return timestamps;
     }

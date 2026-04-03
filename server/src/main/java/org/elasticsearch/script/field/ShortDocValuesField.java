@@ -41,7 +41,7 @@ public class ShortDocValuesField extends AbstractScriptFieldFactory<Short>
         if (input.advanceExact(docId)) {
             resize(input.docValueCount());
             for (int i = 0; i < count; i++) {
-                values[i] = (short) input.nextValue();
+                values[i] = (short) input.nextLongValue();
             }
         } else {
             resize(0);

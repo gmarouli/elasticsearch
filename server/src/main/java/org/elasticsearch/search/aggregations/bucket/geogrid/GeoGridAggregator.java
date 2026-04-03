@@ -108,7 +108,7 @@ public abstract class GeoGridAggregator<T extends InternalGeoGrid<?>> extends Bu
 
                     long previous = Long.MAX_VALUE;
                     for (int i = 0; i < valuesCount; ++i) {
-                        final long val = values.nextValue();
+                        final long val = values.nextLongValue();
                         if (previous != val || i == 0) {
                             long bucketOrdinal = bucketOrds.add(owningBucketOrd, val);
                             if (bucketOrdinal < 0) { // already seen

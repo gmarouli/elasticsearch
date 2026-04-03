@@ -41,7 +41,7 @@ public class ByteDocValuesField extends AbstractScriptFieldFactory<Byte>
         if (input.advanceExact(docId)) {
             resize(input.docValueCount());
             for (int i = 0; i < count; i++) {
-                values[i] = (byte) input.nextValue();
+                values[i] = (byte) input.nextLongValue();
             }
         } else {
             resize(0);

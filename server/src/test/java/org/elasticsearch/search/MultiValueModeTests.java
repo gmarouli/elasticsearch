@@ -115,7 +115,7 @@ public class MultiValueModeTests extends ESTestCase {
             int i;
 
             @Override
-            public long nextValue() {
+            public long nextLongValue() {
                 return array[doc][i++];
             }
 
@@ -161,11 +161,11 @@ public class MultiValueModeTests extends ESTestCase {
                     }
                     for (int j = 0; j < numValues; ++j) {
                         if (mode == MultiValueMode.SUM || mode == MultiValueMode.AVG) {
-                            expected += values.nextValue();
+                            expected += values.nextLongValue();
                         } else if (mode == MultiValueMode.MIN) {
-                            expected = Math.min(expected, values.nextValue());
+                            expected = Math.min(expected, values.nextLongValue());
                         } else if (mode == MultiValueMode.MAX) {
-                            expected = Math.max(expected, values.nextValue());
+                            expected = Math.max(expected, values.nextLongValue());
                         }
                     }
                     if (mode == MultiValueMode.AVG) {
@@ -174,14 +174,14 @@ public class MultiValueModeTests extends ESTestCase {
                         int value = numValues / 2;
                         if (numValues % 2 == 0) {
                             for (int j = 0; j < value - 1; ++j) {
-                                values.nextValue();
+                                values.nextLongValue();
                             }
-                            expected = Math.round(((double) values.nextValue() + values.nextValue()) / 2.0);
+                            expected = Math.round(((double) values.nextLongValue() + values.nextLongValue()) / 2.0);
                         } else {
                             for (int j = 0; j < value; ++j) {
-                                values.nextValue();
+                                values.nextLongValue();
                             }
-                            expected = values.nextValue();
+                            expected = values.nextLongValue();
                         }
                     }
                 }
@@ -235,11 +235,11 @@ public class MultiValueModeTests extends ESTestCase {
                             }
                             for (int j = 0; j < values.docValueCount(); ++j) {
                                 if (mode == MultiValueMode.SUM || mode == MultiValueMode.AVG) {
-                                    expected += values.nextValue();
+                                    expected += values.nextLongValue();
                                 } else if (mode == MultiValueMode.MIN) {
-                                    expected = Math.min(expected, values.nextValue());
+                                    expected = Math.min(expected, values.nextLongValue());
                                 } else if (mode == MultiValueMode.MAX) {
-                                    expected = Math.max(expected, values.nextValue());
+                                    expected = Math.max(expected, values.nextLongValue());
                                 }
                                 ++numValues;
                             }

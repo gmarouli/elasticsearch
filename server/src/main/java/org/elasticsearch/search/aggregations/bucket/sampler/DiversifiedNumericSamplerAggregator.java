@@ -117,7 +117,7 @@ public class DiversifiedNumericSamplerAggregator extends SamplerAggregator {
 
                     @Override
                     public long longValue() throws IOException {
-                        return values.nextValue();
+                        return values.nextLongValue();
                     }
                 };
             }

@@ -66,7 +66,7 @@ public abstract class CartesianPointValuesSource extends ValuesSource {
 
         @Override
         public CartesianPoint nextValue() throws IOException {
-            return point.resetFromEncoded(numericValues.nextValue());
+            return point.resetFromEncoded(numericValues.nextLongValue());
         }
 
     }

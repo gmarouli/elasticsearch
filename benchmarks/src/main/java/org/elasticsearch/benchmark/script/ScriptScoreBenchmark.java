@@ -242,7 +242,7 @@ public class ScriptScoreBenchmark {
                                 if (values.docValueCount() != 1) {
                                     throw new IllegalArgumentException("script only works when there is exactly one value");
                                 }
-                                return values.nextValue();
+                                return values.nextLongValue();
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }

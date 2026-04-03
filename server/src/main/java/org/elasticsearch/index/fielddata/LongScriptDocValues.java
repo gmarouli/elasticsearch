@@ -33,7 +33,7 @@ public final class LongScriptDocValues extends SortedNumericLongValues {
     }
 
     @Override
-    public long nextValue() {
+    public long nextLongValue() {
         return script.values()[cursor++];
     }
 

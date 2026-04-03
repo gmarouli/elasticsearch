@@ -259,7 +259,7 @@ public class MissingValuesTests extends ESTestCase {
             int i;
 
             @Override
-            public long nextValue() {
+            public long nextLongValue() {
                 return values[doc][i++];
             }
 
@@ -282,11 +282,11 @@ public class MissingValuesTests extends ESTestCase {
             if (values[i].length > 0) {
                 assertEquals(values[i].length, withMissingReplaced.docValueCount());
                 for (int j = 0; j < values[i].length; ++j) {
-                    assertEquals(values[i][j], withMissingReplaced.nextValue());
+                    assertEquals(values[i][j], withMissingReplaced.nextLongValue());
                 }
             } else {
                 assertEquals(1, withMissingReplaced.docValueCount());
-                assertEquals(missing, withMissingReplaced.nextValue());
+                assertEquals(missing, withMissingReplaced.nextLongValue());
             }
         }
     }

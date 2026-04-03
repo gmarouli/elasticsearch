@@ -100,7 +100,7 @@ public class TopMetricsAggregatorMetricsTests extends ESTestCase {
         SortedNumericLongValues values = mock(SortedNumericLongValues.class);
         when(values.advanceExact(0)).thenReturn(true);
         when(values.docValueCount()).thenReturn(1);
-        when(values.nextValue()).thenReturn(value);
+        when(values.nextLongValue()).thenReturn(value);
         ValuesSourceConfig config = toConfig(values);
         withMetric(config, m -> {
             m.loader(null).loadFromDoc(0, 0);
@@ -142,7 +142,7 @@ public class TopMetricsAggregatorMetricsTests extends ESTestCase {
         when(values.advanceExact(0)).thenReturn(true);
         when(values.advanceExact(1)).thenReturn(true);
         when(values.docValueCount()).thenReturn(1);
-        when(values.nextValue()).thenReturn(firstValue, secondValue);
+        when(values.nextLongValue()).thenReturn(firstValue, secondValue);
         ValuesSourceConfig config = toConfig(values);
         withMetric(config, m -> assertLoadTwoAndSwap(m, config, SortValue.from(firstValue), SortValue.from(secondValue), true));
     }
@@ -180,7 +180,7 @@ public class TopMetricsAggregatorMetricsTests extends ESTestCase {
                 SortedNumericLongValues docValues = mock(SortedNumericLongValues.class);
                 when(docValues.advanceExact(0)).thenReturn(true);
                 when(docValues.docValueCount()).thenReturn(1);
-                when(docValues.nextValue()).thenReturn(v);
+                when(docValues.nextLongValue()).thenReturn(v);
                 return toConfig(docValues);
             } catch (IOException e) {
                 throw new AssertionError(e);

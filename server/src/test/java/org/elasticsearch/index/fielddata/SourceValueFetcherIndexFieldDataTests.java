@@ -60,7 +60,7 @@ public class SourceValueFetcherIndexFieldDataTests extends ESTestCase {
             int valueFalses = 0;
 
             for (int count = 0; count < values.docValueCount(); ++count) {
-                long value = values.nextValue();
+                long value = values.nextLongValue();
 
                 if (value == 1L) {
                     ++valueTrues;
