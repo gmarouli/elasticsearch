@@ -12,6 +12,7 @@ package org.elasticsearch.index.fielddata;
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
+import org.apache.lucene.search.DoubleValues;
 import org.apache.lucene.search.LongValues;
 
 import java.io.IOException;
@@ -19,7 +20,7 @@ import java.io.IOException;
 /**
  * A multivalued version of {@link LongValues}
  */
-public abstract class SortedNumericLongValues {
+public abstract class SortedNumericLongValues implements SortedNumericValues {
 
     /**
      * A {@link SortedNumericLongValues} instance that does not have a value for any document
@@ -41,36 +42,8 @@ public abstract class SortedNumericLongValues {
         }
     };
 
-    /** Advance the iterator to exactly {@code target} and return whether
-     *  {@code target} has a value.
-     *  {@code target} must be greater than or equal to the current
-     *  doc ID and must be a valid doc ID, ie. &ge; 0 and
-     *  &lt; {@code maxDoc}.*/
-    public abstract boolean advanceExact(int target) throws IOException;
-
-    /**
-     * Iterates to the next value in the current document. Do not call this more than
-     * {@link #docValueCount} times for the document.
-     */
-    public abstract long nextLongValue() throws IOException;
-
-    /**
-     * Retrieves the number of values for the current document.  This must always
-     * be greater than zero.
-     * It is illegal to call this method after {@link #advanceExact(int)}
-     * returned {@code false}.
-     */
-    public abstract int docValueCount();
-
-    /**
-     * Converts a {@link SortedNumericLongValues} values to a singly valued {@link LongValues}
-     * if possible
-     */
-    public static LongValues unwrapSingleton(SortedNumericLongValues values) {
-        if (values instanceof SingletonSortedNumericLongValues sv) {
-            return sv.values;
-        }
-        return null;
+    public double nextDoubleValue() throws IOException {
+        return nextLongValue();
     }
 
     /**
@@ -102,6 +75,26 @@ public abstract class SortedNumericLongValues {
         public int docValueCount() {
             return 1;
         }
+
+        @Override
+        public DoubleValues unwrapSingletonDoubleValues() {
+            return new DoubleValues() {
+                @Override
+                public double doubleValue() throws IOException {
+                    return values.longValue();
+                }
+
+                @Override
+                public boolean advanceExact(int doc) throws IOException {
+                    return values.advanceExact(doc);
+                }
+            };
+        }
+
+        @Override
+        public LongValues unwrapSingletonLongValues() {
+            return values;
+        }
     }
 
     /**
@@ -109,7 +102,7 @@ public abstract class SortedNumericLongValues {
      *
      * Note that if the wrapped iterator can be unwrapped to a singleton {@link NumericDocValues}
      * instance, then the returned {@link SortedNumericLongValues} can also be unwrapped to
-     * a {@link LongValues} instance via {@link #unwrapSingleton(SortedNumericLongValues)}
+     * a {@link LongValues} instance via {@link SortedNumericValues#unwrapSingletonLongValues()}
      */
     public static SortedNumericLongValues wrap(SortedNumericDocValues values) {
         NumericDocValues singleton = DocValues.unwrapSingleton(values);

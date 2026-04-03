@@ -134,7 +134,7 @@ abstract class AutoDateHistogramAggregator extends DeferableBucketAggregator {
             return LeafBucketCollector.NO_OP_COLLECTOR;
         }
         final SortedNumericLongValues values = valuesSource.longValues(aggCtx.getLeafReaderContext());
-        final LongValues singleton = SortedNumericLongValues.unwrapSingleton(values);
+        final LongValues singleton = values.unwrapSingletonLongValues();
         return singleton != null ? getLeafCollector(singleton, sub) : getLeafCollector(values, sub);
     }
 

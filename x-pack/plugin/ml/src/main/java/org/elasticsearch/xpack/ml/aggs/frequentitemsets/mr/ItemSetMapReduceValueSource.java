@@ -406,7 +406,7 @@ public abstract class ItemSetMapReduceValueSource {
         @Override
         ValueCollector getValueCollector(LeafReaderContext ctx) throws IOException {
             final SortedNumericLongValues values = source.longValues(ctx);
-            final LongValues singleton = SortedNumericLongValues.unwrapSingleton(values);
+            final LongValues singleton = values.unwrapSingletonLongValues();
             final Field field = getField();
             final Tuple<Field, List<Object>> empty = new Tuple<>(field, Collections.emptyList());
             return singleton != null ? getValueCollector(singleton, empty, field) : getValueCollector(values, empty, field);

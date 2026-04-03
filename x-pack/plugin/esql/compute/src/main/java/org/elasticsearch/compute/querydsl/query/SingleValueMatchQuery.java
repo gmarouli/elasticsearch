@@ -116,7 +116,7 @@ public final class SingleValueMatchQuery extends Query {
                 final LeafFieldData lfd = fieldData.load(ctx);
                 // If field is singleton, then it is safe to cache this query, because no warning will ever be emitted.
                 if (lfd instanceof LeafNumericFieldData n) {
-                    if (SortedNumericLongValues.unwrapSingleton(n.getLongValues()) != null) {
+                    if (n.getLongValues().unwrapSingletonLongValues() != null) {
                         return true;
                     }
                 } else if (lfd instanceof LeafOrdinalsFieldData o) {

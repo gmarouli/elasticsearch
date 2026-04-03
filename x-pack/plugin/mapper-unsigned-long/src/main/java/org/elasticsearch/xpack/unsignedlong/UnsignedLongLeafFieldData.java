@@ -41,7 +41,7 @@ public class UnsignedLongLeafFieldData implements LeafNumericFieldData {
     @Override
     public SortedNumericDoubleValues getDoubleValues() {
         final SortedNumericLongValues values = signedLongFD.getLongValues();
-        final LongValues singleValues = SortedNumericLongValues.unwrapSingleton(values);
+        final LongValues singleValues = values.unwrapSingletonLongValues();
         if (singleValues != null) {
             return FieldData.singleton(new DoubleValues() {
                 @Override

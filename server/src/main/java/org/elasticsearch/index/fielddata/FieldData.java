@@ -138,8 +138,9 @@ public enum FieldData {
      * instance that will translate long values to doubles using
      * {@link org.apache.lucene.util.NumericUtils#sortableLongToDouble(long)}.
      */
+    // TODO: After unification this might not be necessary
     public static SortedNumericDoubleValues sortableLongBitsToDoubles(SortedNumericLongValues values) {
-        final LongValues singleton = SortedNumericLongValues.unwrapSingleton(values);
+        final LongValues singleton = values.unwrapSingletonLongValues();
         if (singleton != null) {
             final DoubleValues doubles;
             if (singleton instanceof SortableLongBitsNumericDocValues) {
@@ -160,8 +161,9 @@ public enum FieldData {
     /**
      * Wrap the provided {@link SortedNumericDocValues} instance to cast all values to doubles.
      */
+    // TODO: After unification this should not be necessary
     public static SortedNumericDoubleValues castToDouble(final SortedNumericLongValues values) {
-        final LongValues singleton = SortedNumericLongValues.unwrapSingleton(values);
+        final LongValues singleton = values.unwrapSingletonLongValues();
         if (singleton != null) {
             return singleton(new DoubleCastedValues(singleton));
         } else {
@@ -172,8 +174,9 @@ public enum FieldData {
     /**
      * Wrap the provided {@link SortedNumericDoubleValues} instance to cast all values to longs.
      */
+    // TODO: After unification this should not be necessary
     public static SortedNumericLongValues castToLong(final SortedNumericDoubleValues values) {
-        final DoubleValues singleton = unwrapSingleton(values);
+        final DoubleValues singleton = values.unwrapSingletonDoubleValues();
         if (singleton != null) {
             return SortedNumericLongValues.singleton(new LongCastedValues(singleton));
         } else {
@@ -234,7 +237,7 @@ public enum FieldData {
      */
     public static SortedBinaryDocValues toString(final SortedNumericLongValues values) {
         {
-            final LongValues singleton = SortedNumericLongValues.unwrapSingleton(values);
+            final LongValues singleton = values.unwrapSingletonLongValues();
             if (singleton != null) {
                 return FieldData.singleton(toString(singleton));
             }

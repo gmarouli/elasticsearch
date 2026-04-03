@@ -103,7 +103,7 @@ public class CardinalityAggregator extends NumericMetricsAggregator.SingleValue 
                 }
             } else {
                 SortedNumericLongValues values = source.longValues(ctx);
-                LongValues singleton = SortedNumericLongValues.unwrapSingleton(values);
+                LongValues singleton = values.unwrapSingletonLongValues();
                 if (singleton != null) {
                     return new DirectSingleValuesCollector(counts, MurmurHash3SingleValues.hash(singleton));
                 } else {

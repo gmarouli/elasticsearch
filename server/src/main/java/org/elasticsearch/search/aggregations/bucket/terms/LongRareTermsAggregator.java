@@ -71,7 +71,7 @@ public class LongRareTermsAggregator extends AbstractRareTermsAggregator {
     @Override
     public LeafBucketCollector getLeafCollector(AggregationExecutionContext aggCtx, LeafBucketCollector sub) throws IOException {
         final SortedNumericLongValues values = getValues(valuesSource, aggCtx.getLeafReaderContext());
-        final LongValues singleton = SortedNumericLongValues.unwrapSingleton(values);
+        final LongValues singleton = values.unwrapSingletonLongValues();
         return singleton != null ? getLeafCollector(singleton, sub) : getLeafCollector(values, sub);
     }
 

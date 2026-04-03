@@ -13,6 +13,7 @@ import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.search.DoubleValues;
+import org.apache.lucene.search.LongValues;
 import org.apache.lucene.util.NumericUtils;
 
 import java.io.IOException;
@@ -20,42 +21,14 @@ import java.io.IOException;
 /**
  * Clone of {@link SortedNumericDocValues} for double values.
  */
-public abstract class SortedNumericDoubleValues {
+public abstract class SortedNumericDoubleValues implements SortedNumericValues {
 
     /** Sole constructor. (For invocation by subclass
      * constructors, typically implicit.) */
     protected SortedNumericDoubleValues() {}
 
-    /** Advance the iterator to exactly {@code target} and return whether
-     *  {@code target} has a value.
-     *  {@code target} must be greater than or equal to the current
-     *  doc ID and must be a valid doc ID, ie. &ge; 0 and
-     *  &lt; {@code maxDoc}.*/
-    public abstract boolean advanceExact(int target) throws IOException;
-
-    /**
-     * Iterates to the next value in the current document. Do not call this more than
-     * {@link #docValueCount} times for the document.
-     */
-    public abstract double nextDoubleValue() throws IOException;
-
-    /**
-     * Retrieves the number of values for the current document.  This must always
-     * be greater than zero.
-     * It is illegal to call this method after {@link #advanceExact(int)}
-     * returned {@code false}.
-     */
-    public abstract int docValueCount();
-
-    /**
-     * Converts a {@link SortedNumericDoubleValues} values to a singly valued {@link DoubleValues}
-     * if possible
-     */
-    public static DoubleValues unwrapSingleton(SortedNumericDoubleValues values) {
-        if (values instanceof SortedNumericDoubleValues.SingletonSortedNumericDoubleValues sv) {
-            return sv.values;
-        }
-        return null;
+    public long nextLongValue() throws IOException {
+        return (long) nextDoubleValue();
     }
 
     /**
@@ -87,6 +60,26 @@ public abstract class SortedNumericDoubleValues {
         public int docValueCount() {
             return 1;
         }
+
+        @Override
+        public DoubleValues unwrapSingletonDoubleValues() {
+            return values;
+        }
+
+        @Override
+        public LongValues unwrapSingletonLongValues() {
+            return new LongValues() {
+                @Override
+                public long longValue() throws IOException {
+                    return (long) values.doubleValue();
+                }
+
+                @Override
+                public boolean advanceExact(int doc) throws IOException {
+                    return values.advanceExact(doc);
+                }
+            };
+        }
     }
 
     /**
@@ -94,7 +87,7 @@ public abstract class SortedNumericDoubleValues {
      *
      * Note that if the wrapped iterator can be unwrapped to a singleton {@link NumericDocValues}
      * instance, then the returned {@link SortedNumericDoubleValues} can also be unwrapped to
-     * a {@link DoubleValues} instance via {@link #unwrapSingleton(SortedNumericDoubleValues)}
+     * a {@link DoubleValues} instance via {@link SortedNumericValues#unwrapSingletonDoubleValues()}
      */
     public static SortedNumericDoubleValues wrap(SortedNumericDocValues values) {
         NumericDocValues singleton = DocValues.unwrapSingleton(values);

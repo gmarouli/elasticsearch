@@ -44,7 +44,7 @@ public class MultiGeoPointValues extends MultiPointValues<GeoPoint> {
      * Returns a single-valued view of the {@link MultiPointValues} if possible, otherwise null.
      */
     protected GeoPointValues getPointValues() {
-        final LongValues singleton = SortedNumericLongValues.unwrapSingleton(numericValues);
+        final LongValues singleton = numericValues.unwrapSingletonLongValues();
         return singleton != null ? new GeoPointValues(singleton) : null;
     }
 }

@@ -77,7 +77,7 @@ public abstract class GeoGridAggregator<T extends InternalGeoGrid<?>> extends Bu
     public LeafBucketCollector getLeafCollector(final AggregationExecutionContext aggCtx, final LeafBucketCollector sub)
         throws IOException {
         final SortedNumericLongValues values = valuesSource.longValues(aggCtx.getLeafReaderContext());
-        final LongValues singleton = SortedNumericLongValues.unwrapSingleton(values);
+        final LongValues singleton = values.unwrapSingletonLongValues();
         return singleton != null ? getLeafCollector(singleton, sub) : getLeafCollector(values, sub);
     }
 

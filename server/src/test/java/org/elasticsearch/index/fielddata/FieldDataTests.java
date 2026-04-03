@@ -51,7 +51,7 @@ public class FieldDataTests extends ESTestCase {
 
         values = new DummyValues(valueBits);
         asMultiDoubles = FieldData.sortableLongBitsToDoubles(SortedNumericLongValues.singleton(values));
-        LongValues backToLongs = SortedNumericLongValues.unwrapSingleton(FieldData.toSortableLongBits(asMultiDoubles));
+        LongValues backToLongs = FieldData.toSortableLongBits(asMultiDoubles).unwrapSingletonLongValues();
         assertSame(values, backToLongs);
 
         SortedNumericLongValues multiValues = new SortedNumericLongValues() {
@@ -94,7 +94,7 @@ public class FieldDataTests extends ESTestCase {
         };
 
         SortedNumericLongValues asMultiLongs = FieldData.toSortableLongBits(FieldData.singleton(values));
-        LongValues asLongs = SortedNumericLongValues.unwrapSingleton(asMultiLongs);
+        LongValues asLongs = asMultiLongs.unwrapSingletonLongValues();
         assertNotNull(asLongs);
         assertTrue(asLongs.advanceExact(0));
         assertEquals(valueBits, asLongs.longValue());

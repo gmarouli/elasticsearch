@@ -523,7 +523,7 @@ public enum MultiValueMode implements Writeable {
      * Allowed Modes: SUM, AVG, MEDIAN, MIN, MAX
      */
     public LongValues select(final SortedNumericLongValues values) {
-        final LongValues singleton = SortedNumericLongValues.unwrapSingleton(values);
+        final LongValues singleton = values.unwrapSingletonLongValues();
         if (singleton != null) {
             return singleton;
         } else {

@@ -90,7 +90,7 @@ public final class NumericTermsAggregator extends TermsAggregator {
     @Override
     public LeafBucketCollector getLeafCollector(AggregationExecutionContext aggCtx, LeafBucketCollector sub) throws IOException {
         final SortedNumericLongValues values = resultStrategy.getValues(aggCtx.getLeafReaderContext());
-        final LongValues singleton = SortedNumericLongValues.unwrapSingleton(values);
+        final LongValues singleton = values.unwrapSingletonLongValues();
         return resultStrategy.wrapCollector(singleton != null ? getLeafCollector(singleton, sub) : getLeafCollector(values, sub));
     }
 

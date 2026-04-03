@@ -172,7 +172,7 @@ class LongValuesSource extends SingleDimensionValuesSource<Long> {
     @Override
     LeafBucketCollector getLeafCollector(LeafReaderContext context, LeafBucketCollector next) throws IOException {
         final SortedNumericLongValues dvs = docValuesFunc.apply(context);
-        final LongValues singleton = SortedNumericLongValues.unwrapSingleton(dvs);
+        final LongValues singleton = dvs.unwrapSingletonLongValues();
         return singleton != null ? getLeafCollector(singleton, next) : getLeafCollector(dvs, next);
     }
 

@@ -393,7 +393,7 @@ class MultiTermsAggregator extends DeferableBucketAggregator {
         @Override
         public TermValues getValues(LeafReaderContext ctx) throws IOException {
             final SortedNumericLongValues values = source.longValues(ctx);
-            final LongValues singleton = SortedNumericLongValues.unwrapSingleton(values);
+            final LongValues singleton = values.unwrapSingletonLongValues();
             return singleton != null ? getValues(singleton) : getValues(values);
         }
 
