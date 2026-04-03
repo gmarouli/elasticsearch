@@ -120,7 +120,7 @@ public class UnsignedLongLeafFieldData implements LeafNumericFieldData {
 
     @Override
     public SortedBinaryDocValues getBytesValues() {
-        return FieldData.toString(getDoubleValues());
+        return FieldData.doubleToString(getDoubleValues());
     }
 
     @Override

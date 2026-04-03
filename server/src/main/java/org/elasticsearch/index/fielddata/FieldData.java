@@ -235,7 +235,7 @@ public enum FieldData {
      * typically used for scripts or for the `map` execution mode of terms aggs.
      * NOTE: this is very slow!
      */
-    public static SortedBinaryDocValues toString(final SortedNumericLongValues values) {
+    public static SortedBinaryDocValues longToString(final SortedNumericValues values) {
         {
             final LongValues singleton = values.unwrapSingletonLongValues();
             if (singleton != null) {
@@ -281,9 +281,9 @@ public enum FieldData {
      * typically used for scripts or for the `map` execution mode of terms aggs.
      * NOTE: this is very slow!
      */
-    public static SortedBinaryDocValues toString(final SortedNumericDoubleValues values) {
+    public static SortedBinaryDocValues doubleToString(final SortedNumericValues values) {
         {
-            final DoubleValues singleton = FieldData.unwrapSingleton(values);
+            final DoubleValues singleton = values.unwrapSingletonDoubleValues();
             if (singleton != null) {
                 return FieldData.singleton(toString(singleton));
             }

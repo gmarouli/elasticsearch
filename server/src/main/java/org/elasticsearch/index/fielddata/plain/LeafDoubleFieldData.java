@@ -31,7 +31,7 @@ public abstract class LeafDoubleFieldData implements LeafNumericFieldData {
 
     @Override
     public final SortedBinaryDocValues getBytesValues() {
-        return FieldData.toString(getDoubleValues());
+        return FieldData.doubleToString(getDoubleValues());
     }
 
     @Override

@@ -34,7 +34,7 @@ public abstract class LeafLongFieldData implements LeafNumericFieldData {
 
     @Override
     public final SortedBinaryDocValues getBytesValues() {
-        return FieldData.toString(getLongValues());
+        return FieldData.longToString(getLongValues());
     }
 
     @Override
