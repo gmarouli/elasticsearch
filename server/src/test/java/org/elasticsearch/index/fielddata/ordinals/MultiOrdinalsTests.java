@@ -93,7 +93,7 @@ public class MultiOrdinalsTests extends ESTestCase {
         });
         Ordinals ords = creationMultiOrdinals(builder);
         SortedSetDocValues docs = ords.ordinals();
-        final SortedDocValues singleOrds = MultiValueMode.MIN.select(docs);
+        final SortedDocValues singleOrds = MultiValueMode.MIN.selectDoubleValues(docs);
         int docId = ordsAndIds.get(0).id;
         List<Long> docOrds = new ArrayList<>();
         for (OrdAndId ordAndId : ordsAndIds) {

@@ -20,6 +20,7 @@ import org.elasticsearch.core.CheckedFunction;
 import org.elasticsearch.core.Releasables;
 import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.LeafBucketCollector;
@@ -30,7 +31,7 @@ import java.io.IOException;
  * A {@link SingleDimensionValuesSource} for doubles.
  */
 class DoubleValuesSource extends SingleDimensionValuesSource<Double> {
-    private final CheckedFunction<LeafReaderContext, SortedNumericDoubleValues, IOException> docValuesFunc;
+    private final CheckedFunction<LeafReaderContext, SortedNumericValues, IOException> docValuesFunc;
     private final BitArray bits;
     private DoubleArray values;
     private double currentValue;
@@ -39,7 +40,7 @@ class DoubleValuesSource extends SingleDimensionValuesSource<Double> {
     DoubleValuesSource(
         BigArrays bigArrays,
         MappedFieldType fieldType,
-        CheckedFunction<LeafReaderContext, SortedNumericDoubleValues, IOException> docValuesFunc,
+        CheckedFunction<LeafReaderContext, SortedNumericValues, IOException> docValuesFunc,
         DocValueFormat format,
         boolean missingBucket,
         MissingOrder missingOrder,
@@ -156,12 +157,12 @@ class DoubleValuesSource extends SingleDimensionValuesSource<Double> {
 
     @Override
     LeafBucketCollector getLeafCollector(LeafReaderContext context, LeafBucketCollector next) throws IOException {
-        final SortedNumericDoubleValues dvs = docValuesFunc.apply(context);
-        final DoubleValues singleton = FieldData.unwrapSingleton(dvs);
+        final SortedNumericValues dvs = docValuesFunc.apply(context);
+        final DoubleValues singleton = dvs.unwrapSingletonDoubleValues();
         return singleton != null ? getLeafCollector(singleton, next) : getLeafCollector(dvs, next);
     }
 
-    private LeafBucketCollector getLeafCollector(SortedNumericDoubleValues dvs, LeafBucketCollector next) {
+    private LeafBucketCollector getLeafCollector(SortedNumericValues dvs, LeafBucketCollector next) {
         return new LeafBucketCollector() {
             @Override
             public void collect(int doc, long bucket) throws IOException {

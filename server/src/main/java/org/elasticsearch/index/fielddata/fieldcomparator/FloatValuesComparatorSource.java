@@ -24,7 +24,7 @@ import org.elasticsearch.index.fielddata.DenseDoubleValues;
 import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.IndexFieldData;
 import org.elasticsearch.index.fielddata.IndexNumericFieldData;
-import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.MultiValueMode;
 import org.elasticsearch.search.sort.BucketedSort;
@@ -55,7 +55,7 @@ public class FloatValuesComparatorSource extends IndexFieldData.XFieldComparator
     }
 
     DenseDoubleValues getDenseDoubleValues(LeafReaderContext context, double missingValue) throws IOException {
-        final SortedNumericDoubleValues values = indexFieldData.load(context).getDoubleValues();
+        final SortedNumericValues values = indexFieldData.load(context).getValues();
         if (nested == null) {
             return FieldData.replaceMissing(sortMode.select(values), missingValue);
         } else {

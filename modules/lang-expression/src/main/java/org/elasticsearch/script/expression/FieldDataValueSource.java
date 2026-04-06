@@ -53,7 +53,7 @@ class FieldDataValueSource extends FieldDataBasedDoubleValuesSource {
     @Override
     public DoubleValues getValues(LeafReaderContext leaf, DoubleValues scores) {
         LeafNumericFieldData leafData = (LeafNumericFieldData) fieldData.load(leaf);
-        DoubleValues docValues = multiValueMode.select(leafData.getDoubleValues());
+        DoubleValues docValues = multiValueMode.select(leafData.getValues());
         return new DoubleValues() {
             @Override
             public double doubleValue() throws IOException {

@@ -379,7 +379,7 @@ class TopMetricsAggregator extends NumericMetricsAggregator.MultiValue {
         @Override
         public Loader loader(LeafReaderContext ctx) throws IOException {
             // TODO allow configuration of value mode
-            LongValues metricValues = MultiValueMode.AVG.select(valuesSource.longValues(ctx));
+            LongValues metricValues = MultiValueMode.AVG.selectLongValues(valuesSource.values(ctx));
             return (index, doc) -> {
                 if (false == metricValues.advanceExact(doc)) {
                     empty.markMissing(index);

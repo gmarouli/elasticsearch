@@ -25,6 +25,7 @@ import org.elasticsearch.core.Tuple;
 import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.bucket.terms.IncludeExclude;
 import org.elasticsearch.search.aggregations.support.ValuesSource;
@@ -405,14 +406,14 @@ public abstract class ItemSetMapReduceValueSource {
 
         @Override
         ValueCollector getValueCollector(LeafReaderContext ctx) throws IOException {
-            final SortedNumericLongValues values = source.longValues(ctx);
+            final SortedNumericValues values = source.values(ctx);
             final LongValues singleton = values.unwrapSingletonLongValues();
             final Field field = getField();
             final Tuple<Field, List<Object>> empty = new Tuple<>(field, Collections.emptyList());
             return singleton != null ? getValueCollector(singleton, empty, field) : getValueCollector(values, empty, field);
         }
 
-        private ValueCollector getValueCollector(SortedNumericLongValues values, Tuple<Field, List<Object>> empty, Field field) {
+        private ValueCollector getValueCollector(SortedNumericValues values, Tuple<Field, List<Object>> empty, Field field) {
             return doc -> {
                 if (values.advanceExact(doc)) {
                     final int valuesCount = values.docValueCount();

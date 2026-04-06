@@ -12,6 +12,7 @@ import org.apache.lucene.internal.hppc.IntArrayList;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.index.fielddata.FormattedDocValues;
 import org.elasticsearch.index.fielddata.IndexFieldData;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.mapper.flattened.FlattenedFieldSyntheticWriterHelper;
 import org.elasticsearch.search.DocValueFormat;
@@ -62,7 +63,7 @@ class LastValueFieldDownsampler extends AbstractFieldDownsampler<FormattedDocVal
     }
 
     @Override
-    public FormattedDocValues getLeaf(LeafReaderContext context) {
+    public SortedNumericValues getLeaf(LeafReaderContext context) {
         DocValueFormat format = fieldType.docValueFormat(null, null);
         return fieldData.load(context).getFormattedValues(format);
     }

@@ -35,6 +35,7 @@ import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.LeafOrdinalsFieldData;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.fielddata.plain.ConstantIndexFieldData;
 
 import java.io.IOException;
@@ -103,7 +104,7 @@ public final class SingleValueMatchQuery extends Query {
                  * can't do that because we need the check the number of fields.
                  */
                 if (lfd instanceof LeafNumericFieldData n) {
-                    return scorerSupplier(context, n.getLongValues(), boost, scoreMode);
+                    return scorerSupplier(context, n.getValues(), boost, scoreMode);
                 }
                 if (lfd instanceof LeafOrdinalsFieldData o) {
                     return scorerSupplier(context, o.getOrdinalsValues(), boost, scoreMode);
@@ -116,7 +117,7 @@ public final class SingleValueMatchQuery extends Query {
                 final LeafFieldData lfd = fieldData.load(ctx);
                 // If field is singleton, then it is safe to cache this query, because no warning will ever be emitted.
                 if (lfd instanceof LeafNumericFieldData n) {
-                    if (n.getLongValues().unwrapSingletonLongValues() != null) {
+                    if (n.getValues().unwrapSingletonLongValues() != null) {
                         return true;
                     }
                 } else if (lfd instanceof LeafOrdinalsFieldData o) {
@@ -135,7 +136,7 @@ public final class SingleValueMatchQuery extends Query {
 
             private ScorerSupplier scorerSupplier(
                 LeafReaderContext context,
-                SortedNumericLongValues sortedNumerics,
+                SortedNumericValues sortedNumerics,
                 float boost,
                 ScoreMode scoreMode
             ) throws IOException {

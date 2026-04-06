@@ -98,7 +98,7 @@ public final class LuceneMinFactory extends LuceneOperator.Factory {
         };
 
         public final LongValues multiValueMode(SortedNumericDocValues sortedNumericDocValues) {
-            return MultiValueMode.MIN.select(SortedNumericLongValues.wrap(sortedNumericDocValues));
+            return MultiValueMode.MIN.selectLongValues(SortedNumericLongValues.wrap(sortedNumericDocValues));
         }
 
         public final long fromPointValues(PointValues pointValues) throws IOException {

@@ -31,6 +31,7 @@ import org.elasticsearch.index.fielddata.MultiGeoPointValues;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.fielddata.SortingBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortingNumericDoubleValues;
 import org.elasticsearch.index.fielddata.SortingNumericLongValues;
@@ -410,9 +411,8 @@ public abstract class ValuesSource {
     /**
      * {@linkplain ValuesSource} for fields who's values are best thought of
      * as numbers. Aggregations that operate on these values often may chose
-     * to operate on double precision floating point
-     * {@link Numeric#doubleValues values} or on 64 bit signed two's complement
-     * {@link Numeric#longValues values}. They'll do normal "number stuff"
+     * to operate on double precision floating point or on 64 bit signed two's complement
+     * {@link Numeric#values values}. They'll do normal "number stuff"
      * to those values like add, multiply, and compare them to other numbers.
      */
     public abstract static class Numeric extends ValuesSource {
@@ -425,13 +425,8 @@ public abstract class ValuesSource {
             }
 
             @Override
-            public SortedNumericLongValues longValues(LeafReaderContext context) {
-                return SortedNumericLongValues.EMPTY;
-            }
-
-            @Override
-            public SortedNumericDoubleValues doubleValues(LeafReaderContext context) throws IOException {
-                return org.elasticsearch.index.fielddata.FieldData.emptySortedNumericDoubles();
+            public SortedNumericValues values(LeafReaderContext context) {
+                return SortedNumericValues.EMPTY;
             }
 
             @Override
@@ -458,34 +453,19 @@ public abstract class ValuesSource {
         public abstract boolean isFloatingPoint();
 
         /**
-         * Get a 64 bit signed view into the values in this leaf.
-         * <p>
-         * If the values have precision beyond the decimal point then they'll be
-         * <a href="https://docs.oracle.com/javase/specs/jls/se15/html/jls-5.html#jls-5.1.3">"narrowed"</a>
-         * but they'll accurately represent values up to {@link Long#MAX_VALUE}.
-         */
-        public abstract SortedNumericLongValues longValues(LeafReaderContext context) throws IOException;
-
-        /**
-         * Get a double precision floating point view into the values in this leaf.
+         * Get a numeric view into the values in this leaf.
          * <p>
          * These values will preserve any precision beyond the decimal point but
          * are limited to {@code double}'s standard 53 bit mantissa. If the "native"
          * field has values that can't be accurately represented in those 53 bits
          * they'll be <a href="https://docs.oracle.com/javase/specs/jls/se15/html/jls-5.html#jls-5.1.2">"widened"</a>
          */
-        public abstract SortedNumericDoubleValues doubleValues(LeafReaderContext context) throws IOException;
+        public abstract SortedNumericValues values(LeafReaderContext context) throws IOException;
 
         @Override
         public DocValueBits docsWithValue(LeafReaderContext context) throws IOException {
-            // We try and pick the lowest overhead implementation.
-            if (isFloatingPoint()) {
-                final SortedNumericDoubleValues values = doubleValues(context);
-                return org.elasticsearch.index.fielddata.FieldData.docsWithValue(values);
-            } else {
-                final SortedNumericLongValues values = longValues(context);
-                return org.elasticsearch.index.fielddata.FieldData.docsWithValue(values);
-            }
+            final SortedNumericValues values = values(context);
+            return org.elasticsearch.index.fielddata.FieldData.docsWithValue(values);
         }
 
         @Override
@@ -613,13 +593,13 @@ public abstract class ValuesSource {
             }
 
             @Override
-            public SortedNumericLongValues longValues(LeafReaderContext context) {
-                return indexFieldData.load(context).getLongValues();
+            public SortedNumericValues longValues(LeafReaderContext context) {
+                return indexFieldData.load(context).getValues();
             }
 
             @Override
-            public SortedNumericDoubleValues doubleValues(LeafReaderContext context) {
-                return indexFieldData.load(context).getDoubleValues();
+            public SortedNumericValues values(LeafReaderContext context) {
+                return indexFieldData.load(context).getValues();
             }
         }
 

@@ -31,6 +31,7 @@ import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 
 import java.io.IOException;
 import java.util.Locale;
@@ -522,7 +523,7 @@ public enum MultiValueMode implements Writeable {
      *
      * Allowed Modes: SUM, AVG, MEDIAN, MIN, MAX
      */
-    public LongValues select(final SortedNumericLongValues values) {
+    public LongValues selectLongValues(final SortedNumericValues values) {
         final LongValues singleton = values.unwrapSingletonLongValues();
         if (singleton != null) {
             return singleton;
@@ -565,7 +566,7 @@ public enum MultiValueMode implements Writeable {
      *       The returned instance can only be evaluate the current and upcoming docs
      */
     public DenseLongValues select(
-        final SortedNumericLongValues values,
+        final SortedNumericValues values,
         final long missingValue,
         final BitSet parentDocs,
         final DocIdSetIterator childDocs,
@@ -621,7 +622,7 @@ public enum MultiValueMode implements Writeable {
      *
      * Allowed Modes: SUM, AVG, MEDIAN, MIN, MAX
      */
-    public DoubleValues select(final SortedNumericDoubleValues values) {
+    public DoubleValues select(final SortedNumericValues values) {
         final DoubleValues singleton = FieldData.unwrapSingleton(values);
         if (singleton != null) {
             return singleton;
@@ -647,7 +648,7 @@ public enum MultiValueMode implements Writeable {
         }
     }
 
-    protected double pick(SortedNumericDoubleValues values) throws IOException {
+    protected double pick(SortedNumericValues values) throws IOException {
         throw new IllegalArgumentException("Unsupported sort mode: " + this);
     }
 
@@ -664,7 +665,7 @@ public enum MultiValueMode implements Writeable {
      *       The returned instance can only be evaluate the current and upcoming docs
      */
     public DenseDoubleValues select(
-        final SortedNumericDoubleValues values,
+        final SortedNumericValues values,
         final double missingValue,
         final BitSet parentDocs,
         final DocIdSetIterator childDocs,
@@ -710,7 +711,7 @@ public enum MultiValueMode implements Writeable {
     }
 
     protected double pick(
-        SortedNumericDoubleValues values,
+        SortedNumericValues values,
         double missingValue,
         DocIdSetIterator docItr,
         int startDoc,
@@ -848,7 +849,7 @@ public enum MultiValueMode implements Writeable {
      *
      * Allowed Modes: MIN, MAX
      */
-    public SortedDocValues select(final SortedSetDocValues values) {
+    public SortedDocValues selectDoubleValues(final SortedSetDocValues values) {
         if (values.getValueCount() >= Integer.MAX_VALUE) {
             throw new UnsupportedOperationException(
                 "fields containing more than " + (Integer.MAX_VALUE - 1) + " unique terms are unsupported"
@@ -920,9 +921,9 @@ public enum MultiValueMode implements Writeable {
         int maxChildren
     ) throws IOException {
         if (parentDocs == null || childDocs == null) {
-            return select(DocValues.emptySortedSet());
+            return selectDoubleValues(DocValues.emptySortedSet());
         }
-        final SortedDocValues selectedValues = select(values);
+        final SortedDocValues selectedValues = selectDoubleValues(values);
 
         return new AbstractSortedDocValues() {
 

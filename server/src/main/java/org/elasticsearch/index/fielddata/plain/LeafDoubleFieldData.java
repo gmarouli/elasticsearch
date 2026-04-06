@@ -13,8 +13,7 @@ import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.FormattedDocValues;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
-import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
-import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.search.DocValueFormat;
 
 import java.io.IOException;
@@ -31,17 +30,12 @@ public abstract class LeafDoubleFieldData implements LeafNumericFieldData {
 
     @Override
     public final SortedBinaryDocValues getBytesValues() {
-        return FieldData.doubleToString(getDoubleValues());
-    }
-
-    @Override
-    public final SortedNumericLongValues getLongValues() {
-        return FieldData.castToLong(getDoubleValues());
+        return FieldData.doubleToString(getValues());
     }
 
     @Override
     public FormattedDocValues getFormattedValues(DocValueFormat format) {
-        SortedNumericDoubleValues values = getDoubleValues();
+        SortedNumericValues values = getValues();
         return new FormattedDocValues() {
             @Override
             public boolean advanceExact(int docId) throws IOException {

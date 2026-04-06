@@ -31,7 +31,7 @@ final class EmptyMemberValueSource extends FieldDataBasedDoubleValuesSource {
     @Override
     public DoubleValues getValues(LeafReaderContext leaf, DoubleValues scores) {
         LeafNumericFieldData leafData = (LeafNumericFieldData) fieldData.load(leaf);
-        final SortedNumericDoubleValues values = leafData.getDoubleValues();
+        final SortedNumericValues values = leafData.getValues();
         return DoubleValues.withDefault(new DoubleValues() {
             @Override
             public double doubleValue() {

@@ -15,6 +15,7 @@ import org.elasticsearch.exponentialhistogram.ExponentialHistogramCircuitBreaker
 import org.elasticsearch.exponentialhistogram.ExponentialHistogramMerger;
 import org.elasticsearch.exponentialhistogram.ExponentialHistogramXContent;
 import org.elasticsearch.index.fielddata.IndexFieldData;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xpack.analytics.mapper.ExponentialHistogramFieldMapper;
@@ -58,7 +59,7 @@ abstract class ExponentialHistogramFieldDownsampler extends AbstractFieldDownsam
     }
 
     @Override
-    public ExponentialHistogramValuesReader getLeaf(LeafReaderContext context) throws IOException {
+    public SortedNumericValues getLeaf(LeafReaderContext context) throws IOException {
         LeafExponentialHistogramFieldData exponentialHistogramFieldData = (LeafExponentialHistogramFieldData) fieldData.load(context);
         return exponentialHistogramFieldData.getHistogramValues();
     }

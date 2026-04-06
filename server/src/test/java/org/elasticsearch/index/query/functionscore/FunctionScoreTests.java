@@ -183,30 +183,6 @@ public class FunctionScoreTests extends ESTestCase {
         @Override
         public LeafNumericFieldData load(LeafReaderContext context) {
             return new LeafNumericFieldData() {
-                @Override
-                public SortedNumericLongValues getLongValues() {
-                    throw new UnsupportedOperationException(UNSUPPORTED);
-                }
-
-                @Override
-                public SortedNumericDoubleValues getDoubleValues() {
-                    return new SortedNumericDoubleValues() {
-                        @Override
-                        public boolean advanceExact(int docId) {
-                            return true;
-                        }
-
-                        @Override
-                        public int docValueCount() {
-                            return 1;
-                        }
-
-                        @Override
-                        public double nextDoubleValue() {
-                            return 1d;
-                        }
-                    };
-                }
 
                 @Override
                 public SortedNumericValues getValues() {

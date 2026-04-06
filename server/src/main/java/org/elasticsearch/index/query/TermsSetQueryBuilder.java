@@ -25,6 +25,7 @@ import org.elasticsearch.common.lucene.BytesRefs;
 import org.elasticsearch.common.lucene.search.Queries;
 import org.elasticsearch.index.fielddata.IndexNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.script.Script;
 import org.elasticsearch.script.TermsSetQueryScript;
@@ -431,7 +432,7 @@ public final class TermsSetQueryBuilder extends LeafQueryBuilder<TermsSetQueryBu
 
         @Override
         public LongValues getValues(LeafReaderContext ctx, DoubleValues scores) throws IOException {
-            SortedNumericLongValues values = fieldData.load(ctx).getLongValues();
+            SortedNumericValues values = fieldData.load(ctx).getValues();
             return new LongValues() {
 
                 long current = -1;

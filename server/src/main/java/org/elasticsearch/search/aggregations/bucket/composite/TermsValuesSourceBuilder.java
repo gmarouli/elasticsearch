@@ -120,7 +120,7 @@ public class TermsValuesSourceBuilder extends CompositeValuesSourceBuilder<Terms
                             return new DoubleValuesSource(
                                 bigArrays,
                                 compositeValuesSourceConfig.fieldType(),
-                                vs::doubleValues,
+                                vs::values,
                                 compositeValuesSourceConfig.format(),
                                 compositeValuesSourceConfig.missingBucket(),
                                 compositeValuesSourceConfig.missingOrder(),
@@ -134,7 +134,7 @@ public class TermsValuesSourceBuilder extends CompositeValuesSourceBuilder<Terms
                             return new LongValuesSource(
                                 bigArrays,
                                 compositeValuesSourceConfig.fieldType(),
-                                vs::longValues,
+                                vs::values,
                                 rounding,
                                 compositeValuesSourceConfig.format(),
                                 compositeValuesSourceConfig.missingBucket(),

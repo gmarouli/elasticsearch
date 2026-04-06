@@ -16,7 +16,7 @@ import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.io.stream.Writeable;
 import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.IndexNumericFieldData;
-import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 
 import java.io.IOException;
 import java.util.Locale;
@@ -54,11 +54,11 @@ public class FieldValueFactorFunction extends ScoreFunction {
 
     @Override
     public LeafScoreFunction getLeafScoreFunction(LeafReaderContext ctx) {
-        final SortedNumericDoubleValues values;
+        final SortedNumericValues values;
         if (indexFieldData == null) {
             values = FieldData.emptySortedNumericDoubles();
         } else {
-            values = this.indexFieldData.load(ctx).getDoubleValues();
+            values = this.indexFieldData.load(ctx).getValues();
         }
 
         return new LeafScoreFunction() {

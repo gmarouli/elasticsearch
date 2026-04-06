@@ -32,7 +32,7 @@ import org.elasticsearch.index.fielddata.IndexFieldData;
 import org.elasticsearch.index.fielddata.IndexGeoPointFieldData;
 import org.elasticsearch.index.fielddata.IndexNumericFieldData;
 import org.elasticsearch.index.fielddata.MultiGeoPointValues;
-import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.fielddata.SortingNumericDoubleValues;
 import org.elasticsearch.index.mapper.DateFieldMapper;
 import org.elasticsearch.index.mapper.GeoPointFieldMapper.GeoPointFieldType;
@@ -485,7 +485,7 @@ public abstract class DecayFunctionBuilder<DFB extends DecayFunctionBuilder<DFB>
 
         @Override
         protected DoubleValues distance(LeafReaderContext context) {
-            final SortedNumericDoubleValues doubleValues = fieldData.load(context).getDoubleValues();
+            final SortedNumericValues doubleValues = fieldData.load(context).getValues();
             return FieldData.replaceMissing(mode.select(new SortingNumericDoubleValues() {
                 @Override
                 public boolean advanceExact(int docId) throws IOException {
@@ -509,7 +509,7 @@ public abstract class DecayFunctionBuilder<DFB extends DecayFunctionBuilder<DFB>
 
             StringBuilder values = new StringBuilder(mode.name());
             values.append("[");
-            final SortedNumericDoubleValues doubleValues = fieldData.load(ctx).getDoubleValues();
+            final SortedNumericValues doubleValues = fieldData.load(ctx).getValues();
             if (doubleValues.advanceExact(docId)) {
                 final int num = doubleValues.docValueCount();
                 for (int i = 0; i < num; i++) {

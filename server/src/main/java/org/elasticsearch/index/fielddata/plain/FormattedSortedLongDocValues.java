@@ -9,16 +9,16 @@
 package org.elasticsearch.index.fielddata.plain;
 
 import org.elasticsearch.index.fielddata.FormattedDocValues;
-import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.search.DocValueFormat;
 
 import java.io.IOException;
 
-public final class FormattedSortedNumericDocValues implements FormattedDocValues {
-    private final SortedNumericLongValues values;
+public final class FormattedSortedLongDocValues implements FormattedDocValues {
+    private final SortedNumericValues values;
     private final DocValueFormat format;
 
-    public FormattedSortedNumericDocValues(SortedNumericLongValues values, DocValueFormat format) {
+    public FormattedSortedLongDocValues(SortedNumericValues values, DocValueFormat format) {
         this.values = values;
         this.format = format;
     }

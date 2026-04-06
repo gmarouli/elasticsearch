@@ -141,7 +141,7 @@ public class MultiValueModeTests extends ESTestCase {
     private void verifySortedNumeric(Supplier<SortedNumericLongValues> supplier, int maxDoc) throws IOException {
         for (MultiValueMode mode : MultiValueMode.values()) {
             SortedNumericLongValues values = supplier.get();
-            final LongValues selected = mode.select(values);
+            final LongValues selected = mode.selectLongValues(values);
             for (int i = 0; i < maxDoc; ++i) {
                 Long actual = null;
                 if (selected.advanceExact(i)) {
@@ -731,7 +731,7 @@ public class MultiValueModeTests extends ESTestCase {
     private void verifySortedSet(Supplier<SortedSetDocValues> supplier, int maxDoc) throws IOException {
         for (MultiValueMode mode : new MultiValueMode[] { MultiValueMode.MIN, MultiValueMode.MAX }) {
             SortedSetDocValues values = supplier.get();
-            final SortedDocValues selected = mode.select(values);
+            final SortedDocValues selected = mode.selectDoubleValues(values);
             for (int i = 0; i < maxDoc; ++i) {
                 long actual = -1;
                 if (selected.advanceExact(i)) {

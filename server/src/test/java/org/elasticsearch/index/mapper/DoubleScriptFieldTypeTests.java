@@ -35,7 +35,6 @@ import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.index.fielddata.DoubleScriptFieldData;
 import org.elasticsearch.index.fielddata.ScriptDocValues;
-import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
 import org.elasticsearch.index.mapper.blockloader.script.DoubleScriptBlockDocValuesReader;
 import org.elasticsearch.index.query.SearchExecutionContext;
 import org.elasticsearch.indices.CrankyCircuitBreakerService;
@@ -99,7 +98,7 @@ public class DoubleScriptFieldTypeTests extends AbstractNonTextScriptFieldTypeTe
 
                     @Override
                     public LeafCollector getLeafCollector(LeafReaderContext context) {
-                        SortedNumericDoubleValues dv = ifd.load(context).getDoubleValues();
+                        SortedNumericValues dv = ifd.load(context).getValues();
                         return new LeafCollector() {
                             @Override
                             public void setScorer(Scorable scorer) {}

@@ -10,6 +10,7 @@
 package org.elasticsearch.search.aggregations.support;
 
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.common.geo.GeoPoint;
@@ -17,6 +18,7 @@ import org.elasticsearch.index.fielddata.AbstractSortedSetDocValues;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 
 import java.io.IOException;
 import java.util.function.LongUnaryOperator;
@@ -99,15 +101,9 @@ public enum MissingValues {
             }
 
             @Override
-            public SortedNumericLongValues longValues(LeafReaderContext context) throws IOException {
-                final SortedNumericLongValues values = valuesSource.longValues(context);
-                return replaceMissing(values, missing.longValue());
-            }
-
-            @Override
-            public SortedNumericDoubleValues doubleValues(LeafReaderContext context) throws IOException {
-                final SortedNumericDoubleValues values = valuesSource.doubleValues(context);
-                return replaceMissing(values, missing.doubleValue());
+            public SortedNumericValues values(LeafReaderContext context) throws IOException {
+                final SortedNumericValues values = valuesSource.values(context);
+                return isFloatingPoint ? replaceMissing(values, missing.doubleValue()) : replaceMissing(values, missing.longValue());
             }
 
             @Override
@@ -117,7 +113,7 @@ public enum MissingValues {
         };
     }
 
-    public static SortedNumericLongValues replaceMissing(final SortedNumericLongValues values, final long missing) {
+    public static SortedNumericLongValues replaceMissing(final SortedNumericValues values, final long missing) {
         return new SortedNumericLongValues() {
 
             private int count;
@@ -156,7 +152,7 @@ public enum MissingValues {
         };
     }
 
-    static SortedNumericDoubleValues replaceMissing(final SortedNumericDoubleValues values, final double missing) {
+    static SortedNumericDoubleValues replaceMissing(final SortedNumericValues values, final double missing) {
         return new SortedNumericDoubleValues() {
 
             private int count;

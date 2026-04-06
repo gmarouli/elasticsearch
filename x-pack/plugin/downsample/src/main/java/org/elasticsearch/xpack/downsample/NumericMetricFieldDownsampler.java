@@ -13,6 +13,7 @@ import org.elasticsearch.action.downsample.DownsampleConfig;
 import org.elasticsearch.index.fielddata.IndexFieldData;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.mapper.TimeSeriesParams;
 import org.elasticsearch.search.aggregations.metrics.CompensatedSum;
@@ -27,7 +28,7 @@ import java.util.Deque;
  * values. Based on the supported metric types, the subclasses of this class compute values for
  * gauge and metric types.
  */
-abstract sealed class NumericMetricFieldDownsampler extends AbstractFieldDownsampler<SortedNumericDoubleValues> permits
+abstract sealed class NumericMetricFieldDownsampler extends AbstractFieldDownsampler<SortedNumericValues> permits
     AggregateMetricDoubleFieldDownsampler, NumericMetricFieldDownsampler.AggregateGauge, NumericMetricFieldDownsampler.LastValue,
     NumericMetricFieldDownsampler.AggregateCounter {
 
@@ -36,9 +37,9 @@ abstract sealed class NumericMetricFieldDownsampler extends AbstractFieldDownsam
     }
 
     @Override
-    public SortedNumericDoubleValues getLeaf(LeafReaderContext context) {
+    public SortedNumericValues getLeaf(LeafReaderContext context) {
         LeafNumericFieldData numericFieldData = (LeafNumericFieldData) fieldData.load(context);
-        return numericFieldData.getDoubleValues();
+        return numericFieldData.getValues();
     }
 
     public static boolean supportsFieldType(MappedFieldType fieldType) {

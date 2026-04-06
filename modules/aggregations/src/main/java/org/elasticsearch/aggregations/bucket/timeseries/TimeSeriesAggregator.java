@@ -15,6 +15,7 @@ import org.elasticsearch.common.util.ObjectArray;
 import org.elasticsearch.core.Releasables;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.mapper.RoutingPathFields;
 import org.elasticsearch.index.mapper.TimeSeriesIdFieldMapper;
 import org.elasticsearch.search.aggregations.AggregationExecutionContext;
@@ -121,7 +122,7 @@ public class TimeSeriesAggregator extends BucketsAggregator {
         for (var entry : dimensionValueSources.entrySet()) {
             String fieldName = entry.getKey();
             if (entry.getValue() instanceof ValuesSource.Numeric numericVS) {
-                SortedNumericLongValues docValues = numericVS.longValues(aggCtx.getLeafReaderContext());
+                SortedNumericValues docValues = numericVS.values(aggCtx.getLeafReaderContext());
                 dimensionConsumers.put(entry.getKey(), (docId, tsidBuilder) -> {
                     if (docValues.advanceExact(docId)) {
                         assert docValues.docValueCount() == 1 : "Dimension field cannot be a multi-valued field";

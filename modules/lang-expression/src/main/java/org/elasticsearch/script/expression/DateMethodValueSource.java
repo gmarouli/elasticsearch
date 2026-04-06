@@ -40,7 +40,7 @@ class DateMethodValueSource extends FieldDataValueSource {
     public DoubleValues getValues(LeafReaderContext leaf, DoubleValues scores) {
         LeafNumericFieldData leafData = (LeafNumericFieldData) fieldData.load(leaf);
         final Calendar calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"), Locale.ROOT);
-        DoubleValues docValues = multiValueMode.select(leafData.getDoubleValues());
+        DoubleValues docValues = multiValueMode.select(leafData.getValues());
         return new DoubleValues() {
             @Override
             public double doubleValue() throws IOException {

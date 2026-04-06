@@ -201,7 +201,7 @@ public class TopMetricsAggregatorMetricsTests extends ESTestCase {
     private ValuesSourceConfig toConfig(SortedNumericLongValues values) throws IOException {
         ValuesSource.Numeric source = mock(ValuesSource.Numeric.class);
         when(source.isFloatingPoint()).thenReturn(false);
-        when(source.longValues(null)).thenReturn(values);
+        when(source.values(null)).thenReturn(values);
         if (randomBoolean()) {
             return toConfig(source, CoreValuesSourceType.NUMERIC, randomWholeNumberDocValuesFormat(), true);
         }
@@ -216,7 +216,7 @@ public class TopMetricsAggregatorMetricsTests extends ESTestCase {
     private ValuesSourceConfig toConfig(SortedNumericDoubleValues values) throws IOException {
         ValuesSource.Numeric source = mock(ValuesSource.Numeric.class);
         when(source.isFloatingPoint()).thenReturn(true);
-        when(source.doubleValues(null)).thenReturn(values);
+        when(source.values(null)).thenReturn(values);
         return toConfig(
             source,
             CoreValuesSourceType.NUMERIC,

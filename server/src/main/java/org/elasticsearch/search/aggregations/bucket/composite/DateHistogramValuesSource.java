@@ -34,7 +34,7 @@ public class DateHistogramValuesSource extends LongValuesSource implements Sized
         super(
             bigArrays,
             fieldType,
-            roundingValuesSource::longValues,
+            roundingValuesSource::values,
             roundingValuesSource::round,
             format,
             missingBucket,

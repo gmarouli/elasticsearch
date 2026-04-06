@@ -43,6 +43,7 @@ import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.index.fielddata.DateScriptFieldData;
 import org.elasticsearch.index.fielddata.ScriptDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.mapper.blockloader.script.DateScriptBlockDocValuesReader;
 import org.elasticsearch.index.query.SearchExecutionContext;
 import org.elasticsearch.indices.CrankyCircuitBreakerService;
@@ -189,7 +190,7 @@ public class DateScriptFieldTypeTests extends AbstractNonTextScriptFieldTypeTest
 
                     @Override
                     public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
-                        SortedNumericLongValues dv = ifd.load(context).getLongValues();
+                        SortedNumericValues dv = ifd.load(context).getValues();
                         return new LeafCollector() {
                             @Override
                             public void setScorer(Scorable scorer) throws IOException {}

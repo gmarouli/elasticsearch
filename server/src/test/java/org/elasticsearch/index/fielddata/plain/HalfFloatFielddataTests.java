@@ -20,6 +20,7 @@ import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.ScriptDocValues.Doubles;
 import org.elasticsearch.index.fielddata.ScriptDocValues.DoublesSupplier;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.mapper.IndexType;
 import org.elasticsearch.index.mapper.LuceneDocument;
 import org.elasticsearch.index.mapper.NumberFieldMapper;
@@ -39,12 +40,12 @@ public class HalfFloatFielddataTests extends ESTestCase {
         w.addDocument(doc);
         final DirectoryReader dirReader = DirectoryReader.open(w);
         LeafReader reader = getOnlyLeafReader(dirReader);
-        SortedNumericDoubleValues values = new SortedDoublesIndexFieldData.SortedNumericHalfFloatFieldData(
+        SortedNumericValues values = new SortedDoublesIndexFieldData.SortedNumericHalfFloatFieldData(
             reader,
             "half_float",
             (dv, n) -> new DelegateDocValuesField(new Doubles(new DoublesSupplier(dv)), n)
-        ).getDoubleValues();
-        assertNotNull(FieldData.unwrapSingleton(values));
+        ).getValues();
+        assertNotNull(values.unwrapSingletonDoubleValues());
         assertTrue(values.advanceExact(0));
         assertEquals(1, values.docValueCount());
         assertEquals(3f, values.nextDoubleValue(), 0f);
@@ -60,12 +61,12 @@ public class HalfFloatFielddataTests extends ESTestCase {
         w.addDocument(doc);
         final DirectoryReader dirReader = DirectoryReader.open(w);
         LeafReader reader = getOnlyLeafReader(dirReader);
-        SortedNumericDoubleValues values = new SortedDoublesIndexFieldData.SortedNumericHalfFloatFieldData(
+        SortedNumericValues values = new SortedDoublesIndexFieldData.SortedNumericHalfFloatFieldData(
             reader,
             "half_float",
             (dv, n) -> new DelegateDocValuesField(new Doubles(new DoublesSupplier(dv)), n)
-        ).getDoubleValues();
-        assertNull(FieldData.unwrapSingleton(values));
+        ).getValues();
+        assertNull(values.unwrapSingletonDoubleValues());
         assertTrue(values.advanceExact(0));
         assertEquals(2, values.docValueCount());
         assertEquals(2f, values.nextDoubleValue(), 0f);

@@ -13,10 +13,9 @@ import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.FormattedDocValues;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
-import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
 import org.elasticsearch.index.fielddata.SortedNumericValues;
-import org.elasticsearch.index.fielddata.plain.FormattedSortedNumericDocValues;
+import org.elasticsearch.index.fielddata.plain.FormattedSortedLongDocValues;
 import org.elasticsearch.script.field.DocValuesScriptFieldFactory;
 import org.elasticsearch.script.field.ToScriptFieldFactory;
 import org.elasticsearch.search.DocValueFormat;
@@ -27,73 +26,42 @@ import static org.elasticsearch.xpack.unsignedlong.UnsignedLongFieldMapper.sorta
 
 public class UnsignedLongLeafFieldData implements LeafNumericFieldData {
     private final LeafNumericFieldData signedLongFD;
-    protected final ToScriptFieldFactory<SortedNumericLongValues> toScriptFieldFactory;
+    protected final ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory;
 
-    UnsignedLongLeafFieldData(LeafNumericFieldData signedLongFD, ToScriptFieldFactory<SortedNumericLongValues> toScriptFieldFactory) {
+    UnsignedLongLeafFieldData(LeafNumericFieldData signedLongFD, ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory) {
         this.signedLongFD = signedLongFD;
         this.toScriptFieldFactory = toScriptFieldFactory;
     }
 
     @Override
-    public SortedNumericLongValues getLongValues() {
-        return signedLongFD.getLongValues();
-    }
-
-    @Override
-    public SortedNumericDoubleValues getDoubleValues() {
-        final SortedNumericLongValues values = signedLongFD.getLongValues();
+    public SortedNumericValues getValues() {
+        final SortedNumericValues values = signedLongFD.getValues();
         final LongValues singleValues = values.unwrapSingletonLongValues();
         if (singleValues != null) {
-            return FieldData.singleton(new DoubleValues() {
-                @Override
-                public boolean advanceExact(int doc) throws IOException {
-                    return singleValues.advanceExact(doc);
-                }
-
-                @Override
-                public double doubleValue() throws IOException {
-                    return convertUnsignedLongToDouble(singleValues.longValue());
-                }
-            });
-        } else {
-            return new SortedNumericDoubleValues() {
-
-                @Override
-                public boolean advanceExact(int target) throws IOException {
-                    return values.advanceExact(target);
-                }
-
+            return new SortedNumericLongValues.SingletonSortedNumericLongValues(singleValues) {
                 @Override
                 public double nextDoubleValue() throws IOException {
-                    return convertUnsignedLongToDouble(values.nextLongValue());
+                    return convertUnsignedLongToDouble(singleValues.longValue());
                 }
 
                 @Override
-                public int docValueCount() {
-                    return values.docValueCount();
+                public DoubleValues unwrapSingletonDoubleValues() {
+                    SortedNumericLongValues longValues = this;
+                    return new DoubleValues() {
+                        @Override
+                        public double doubleValue() throws IOException {
+                            return convertUnsignedLongToDouble(longValues.nextLongValue());
+                        }
+
+                        @Override
+                        public boolean advanceExact(int doc) throws IOException {
+                            return longValues.advanceExact(doc);
+                        }
+                    };
                 }
             };
-        }
-    }
-
-    @Override
-    public SortedNumericValues getValues() {
-        final SortedNumericLongValues values = signedLongFD.getLongValues();
-        final LongValues singleValues = values.unwrapSingletonLongValues();
-        if (singleValues != null) {
-            return FieldData.singleton(new DoubleValues() {
-                @Override
-                public boolean advanceExact(int doc) throws IOException {
-                    return singleValues.advanceExact(doc);
-                }
-
-                @Override
-                public double doubleValue() throws IOException {
-                    return convertUnsignedLongToDouble(singleValues.longValue());
-                }
-            });
         } else {
-            return new SortedNumericDoubleValues() {
+            return new SortedNumericLongValues() {
 
                 @Override
                 public boolean advanceExact(int target) throws IOException {
@@ -103,6 +71,11 @@ public class UnsignedLongLeafFieldData implements LeafNumericFieldData {
                 @Override
                 public double nextDoubleValue() throws IOException {
                     return convertUnsignedLongToDouble(values.nextLongValue());
+                }
+
+                @Override
+                public long nextLongValue() throws IOException {
+                    return values.nextLongValue();
                 }
 
                 @Override
@@ -115,12 +88,12 @@ public class UnsignedLongLeafFieldData implements LeafNumericFieldData {
 
     @Override
     public DocValuesScriptFieldFactory getScriptFieldFactory(String name) {
-        return toScriptFieldFactory.getScriptFieldFactory(getLongValues(), name);
+        return toScriptFieldFactory.getScriptFieldFactory(getValues(), name);
     }
 
     @Override
     public SortedBinaryDocValues getBytesValues() {
-        return FieldData.doubleToString(getDoubleValues());
+        return FieldData.doubleToString(getValues());
     }
 
     @Override
@@ -130,7 +103,7 @@ public class UnsignedLongLeafFieldData implements LeafNumericFieldData {
 
     @Override
     public FormattedDocValues getFormattedValues(DocValueFormat format) {
-        return new FormattedSortedNumericDocValues(getLongValues(), format);
+        return new FormattedSortedLongDocValues(getValues(), format);
     }
 
     static double convertUnsignedLongToDouble(long value) {

@@ -25,12 +25,12 @@ public final class BooleanScriptFieldData extends IndexNumericFieldData {
     public static class Builder implements IndexFieldData.Builder {
         private final String name;
         private final BooleanFieldScript.LeafFactory leafFactory;
-        protected final ToScriptFieldFactory<SortedNumericLongValues> toScriptFieldFactory;
+        protected final ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory;
 
         public Builder(
             String name,
             BooleanFieldScript.LeafFactory leafFactory,
-            ToScriptFieldFactory<SortedNumericLongValues> toScriptFieldFactory
+            ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory
         ) {
             this.name = name;
             this.leafFactory = leafFactory;
@@ -45,12 +45,12 @@ public final class BooleanScriptFieldData extends IndexNumericFieldData {
 
     private final String fieldName;
     private final BooleanFieldScript.LeafFactory leafFactory;
-    protected final ToScriptFieldFactory<SortedNumericLongValues> toScriptFieldFactory;
+    protected final ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory;
 
     private BooleanScriptFieldData(
         String fieldName,
         BooleanFieldScript.LeafFactory leafFactory,
-        ToScriptFieldFactory<SortedNumericLongValues> toScriptFieldFactory
+        ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory
     ) {
         this.fieldName = fieldName;
         this.leafFactory = leafFactory;
@@ -98,20 +98,15 @@ public final class BooleanScriptFieldData extends IndexNumericFieldData {
 
     public static class BooleanScriptLeafFieldData extends LeafLongFieldData {
         private final BooleanScriptDocValues booleanScriptDocValues;
-        protected final ToScriptFieldFactory<SortedNumericLongValues> toScriptFieldFactory;
+        protected final ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory;
 
         BooleanScriptLeafFieldData(
             BooleanScriptDocValues booleanScriptDocValues,
-            ToScriptFieldFactory<SortedNumericLongValues> toScriptFieldFactory
+            ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory
         ) {
             super(0);
             this.booleanScriptDocValues = booleanScriptDocValues;
             this.toScriptFieldFactory = toScriptFieldFactory;
-        }
-
-        @Override
-        public SortedNumericLongValues getLongValues() {
-            return booleanScriptDocValues;
         }
 
         @Override
@@ -121,7 +116,7 @@ public final class BooleanScriptFieldData extends IndexNumericFieldData {
 
         @Override
         public DocValuesScriptFieldFactory getScriptFieldFactory(String name) {
-            return toScriptFieldFactory.getScriptFieldFactory(getLongValues(), name);
+            return toScriptFieldFactory.getScriptFieldFactory(getValues(), name);
         }
     }
 }

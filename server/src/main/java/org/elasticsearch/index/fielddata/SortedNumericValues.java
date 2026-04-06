@@ -20,6 +20,28 @@ import java.io.IOException;
  */
 public interface SortedNumericValues {
 
+    SortedNumericValues EMPTY = new SortedNumericValues() {
+        @Override
+        public boolean advanceExact(int target) {
+            return false;
+        }
+
+        @Override
+        public long nextLongValue() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public double nextDoubleValue() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public int docValueCount() {
+            throw new UnsupportedOperationException();
+        }
+    };
+
     /** Advance the iterator to exactly {@code target} and return whether
      *  {@code target} has a value.
      *  {@code target} must be greater than or equal to the current

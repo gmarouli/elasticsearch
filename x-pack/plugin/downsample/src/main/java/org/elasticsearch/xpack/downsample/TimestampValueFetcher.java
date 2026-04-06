@@ -11,6 +11,7 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.internal.hppc.IntArrayList;
 import org.elasticsearch.index.fielddata.IndexFieldData;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.fielddata.plain.LeafLongFieldData;
 import org.elasticsearch.index.mapper.DateFieldMapper;
 import org.elasticsearch.index.mapper.MappedFieldType;
@@ -28,9 +29,9 @@ class TimestampValueFetcher {
         fieldData = context.getForField(fieldType, MappedFieldType.FielddataOperation.SEARCH);
     }
 
-    SortedNumericLongValues getLeaf(LeafReaderContext context) {
+    SortedNumericValues getLeaf(LeafReaderContext context) {
         LeafLongFieldData numericFieldData = (LeafLongFieldData) fieldData.load(context);
-        return numericFieldData.getLongValues();
+        return numericFieldData.getValues();
     }
 
     static long[] fetch(SortedNumericLongValues timestampDocValues, IntArrayList docIdBuffer) throws IOException {

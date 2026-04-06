@@ -53,11 +53,11 @@ public abstract class SortedNumericLongValues implements SortedNumericValues {
         return new SingletonSortedNumericLongValues(values);
     }
 
-    private static class SingletonSortedNumericLongValues extends SortedNumericLongValues {
+    public static class SingletonSortedNumericLongValues extends SortedNumericLongValues {
 
         private final LongValues values;
 
-        private SingletonSortedNumericLongValues(LongValues values) {
+        protected SingletonSortedNumericLongValues(LongValues values) {
             this.values = values;
         }
 

@@ -15,6 +15,7 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.mapper.MapperService;
 import org.elasticsearch.index.mapper.MapperServiceTestCase;
 import org.elasticsearch.script.AggregationScript;
@@ -283,7 +284,7 @@ public class ValuesSourceConfigTests extends MapperServiceTestCase {
             config = ValuesSourceConfig.resolve(context, null, "field", null, null, null, null, CoreValuesSourceType.KEYWORD);
             ValuesSource.Numeric valuesSource = (ValuesSource.Numeric) config.getValuesSource();
             LeafReaderContext ctx = context.searcher().getIndexReader().leaves().get(0);
-            SortedNumericLongValues values = valuesSource.longValues(ctx);
+            SortedNumericValues values = valuesSource.values(ctx);
             assertTrue(values.advanceExact(0));
             assertEquals(1, values.docValueCount());
             assertEquals(42, values.nextLongValue());
@@ -298,13 +299,13 @@ public class ValuesSourceConfigTests extends MapperServiceTestCase {
             config = ValuesSourceConfig.resolve(context, null, "field", null, null, null, null, CoreValuesSourceType.KEYWORD);
             ValuesSource.Numeric valuesSource = (ValuesSource.Numeric) config.getValuesSource();
             LeafReaderContext ctx = context.searcher().getIndexReader().leaves().get(0);
-            SortedNumericLongValues values = valuesSource.longValues(ctx);
+            SortedNumericValues values = valuesSource.values(ctx);
             assertFalse(values.advanceExact(0));
             assertTrue(config.alignsWithSearchIndex());
 
             config = ValuesSourceConfig.resolve(context, null, "field", null, 42, null, null, CoreValuesSourceType.KEYWORD);
             valuesSource = (ValuesSource.Numeric) config.getValuesSource();
-            values = valuesSource.longValues(ctx);
+            values = valuesSource.values(ctx);
             assertTrue(values.advanceExact(0));
             assertEquals(1, values.docValueCount());
             assertEquals(42, values.nextLongValue());
@@ -325,7 +326,7 @@ public class ValuesSourceConfigTests extends MapperServiceTestCase {
             config = ValuesSourceConfig.resolve(context, ValueType.NUMBER, "field", null, 42, null, null, CoreValuesSourceType.KEYWORD);
             valuesSource = (ValuesSource.Numeric) config.getValuesSource();
             LeafReaderContext ctx = context.searcher().getIndexReader().leaves().get(0);
-            SortedNumericLongValues values = valuesSource.longValues(ctx);
+            SortedNumericValues values = valuesSource.values(ctx);
             assertTrue(values.advanceExact(0));
             assertEquals(1, values.docValueCount());
             assertEquals(42, values.nextLongValue());
@@ -340,7 +341,7 @@ public class ValuesSourceConfigTests extends MapperServiceTestCase {
             config = ValuesSourceConfig.resolve(context, null, "field", null, null, null, null, CoreValuesSourceType.KEYWORD);
             ValuesSource.Numeric valuesSource = (ValuesSource.Numeric) config.getValuesSource();
             LeafReaderContext ctx = context.searcher().getIndexReader().leaves().get(0);
-            SortedNumericLongValues values = valuesSource.longValues(ctx);
+            SortedNumericValues values = valuesSource.values(ctx);
             assertTrue(values.advanceExact(0));
             assertEquals(1, values.docValueCount());
             assertEquals(1, values.nextLongValue());
@@ -355,13 +356,13 @@ public class ValuesSourceConfigTests extends MapperServiceTestCase {
             config = ValuesSourceConfig.resolve(context, null, "field", null, null, null, null, CoreValuesSourceType.KEYWORD);
             ValuesSource.Numeric valuesSource = (ValuesSource.Numeric) config.getValuesSource();
             LeafReaderContext ctx = context.searcher().getIndexReader().leaves().get(0);
-            SortedNumericLongValues values = valuesSource.longValues(ctx);
+            SortedNumericValues values = valuesSource.values(ctx);
             assertFalse(values.advanceExact(0));
             assertTrue(config.alignsWithSearchIndex());
 
             config = ValuesSourceConfig.resolve(context, null, "field", null, true, null, null, CoreValuesSourceType.KEYWORD);
             valuesSource = (ValuesSource.Numeric) config.getValuesSource();
-            values = valuesSource.longValues(ctx);
+            values = valuesSource.values(ctx);
             assertTrue(values.advanceExact(0));
             assertEquals(1, values.docValueCount());
             assertEquals(1, values.nextLongValue());
@@ -382,7 +383,7 @@ public class ValuesSourceConfigTests extends MapperServiceTestCase {
             config = ValuesSourceConfig.resolve(context, ValueType.BOOLEAN, "field", null, true, null, null, CoreValuesSourceType.KEYWORD);
             valuesSource = (ValuesSource.Numeric) config.getValuesSource();
             LeafReaderContext ctx = context.searcher().getIndexReader().leaves().get(0);
-            SortedNumericLongValues values = valuesSource.longValues(ctx);
+            SortedNumericValues values = valuesSource.values(ctx);
             assertTrue(values.advanceExact(0));
             assertEquals(1, values.docValueCount());
             assertEquals(1, values.nextLongValue());

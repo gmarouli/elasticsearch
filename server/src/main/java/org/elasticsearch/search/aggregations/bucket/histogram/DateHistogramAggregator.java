@@ -20,6 +20,7 @@ import org.elasticsearch.core.CheckedFunction;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.Releasables;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.AdaptingAggregator;
 import org.elasticsearch.search.aggregations.AggregationExecutionContext;
@@ -288,12 +289,12 @@ class DateHistogramAggregator extends BucketsAggregator implements SizedBucketAg
         if (valuesSource == null) {
             return LeafBucketCollector.NO_OP_COLLECTOR;
         }
-        final SortedNumericLongValues values = valuesSource.longValues(aggCtx.getLeafReaderContext());
+        final SortedNumericValues values = valuesSource.values(aggCtx.getLeafReaderContext());
         final LongValues singleton = values.unwrapSingletonLongValues();
         return singleton != null ? getLeafCollector(singleton, sub) : getLeafCollector(values, sub);
     }
 
-    private LeafBucketCollector getLeafCollector(SortedNumericLongValues values, LeafBucketCollector sub) {
+    private LeafBucketCollector getLeafCollector(SortedNumericValues values, LeafBucketCollector sub) {
         return new LeafBucketCollectorBase(sub, values) {
             @Override
             public void collect(int doc, long owningBucketOrd) throws IOException {

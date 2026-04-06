@@ -46,7 +46,7 @@ public class ExpressionNumberSortScriptTests extends ESTestCase {
         when(doubleValues.nextDoubleValue()).thenReturn(2.718);
 
         LeafNumericFieldData atomicFieldData = mock(LeafNumericFieldData.class);
-        when(atomicFieldData.getDoubleValues()).thenReturn(doubleValues);
+        when(atomicFieldData.getValues()).thenReturn(doubleValues);
 
         IndexNumericFieldData fieldData = mock(IndexNumericFieldData.class);
         when(fieldData.getFieldName()).thenReturn("field");

@@ -28,6 +28,7 @@ import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.AggregationExecutionContext;
 import org.elasticsearch.search.aggregations.Aggregator;
@@ -392,12 +393,12 @@ class MultiTermsAggregator extends DeferableBucketAggregator {
 
         @Override
         public TermValues getValues(LeafReaderContext ctx) throws IOException {
-            final SortedNumericLongValues values = source.longValues(ctx);
+            final SortedNumericValues values = source.values(ctx);
             final LongValues singleton = values.unwrapSingletonLongValues();
             return singleton != null ? getValues(singleton) : getValues(values);
         }
 
-        public TermValues getValues(SortedNumericLongValues values) {
+        public TermValues getValues(SortedNumericValues values) {
             return doc -> {
                 if (values.advanceExact(doc)) {
                     final List<Object> objects = new ArrayList<>();
@@ -445,12 +446,12 @@ class MultiTermsAggregator extends DeferableBucketAggregator {
 
         @Override
         public TermValues getValues(LeafReaderContext ctx) throws IOException {
-            final SortedNumericDoubleValues values = source.doubleValues(ctx);
-            final DoubleValues singleton = FieldData.unwrapSingleton(values);
+            final SortedNumericValues values = source.values(ctx);
+            final DoubleValues singleton = values.unwrapSingletonDoubleValues();
             return singleton != null ? getValues(singleton) : getValues(values);
         }
 
-        public TermValues getValues(SortedNumericDoubleValues values) {
+        public TermValues getValues(SortedNumericValues values) {
             return doc -> {
                 if (values.advanceExact(doc)) {
                     final List<Object> objects = new ArrayList<>();

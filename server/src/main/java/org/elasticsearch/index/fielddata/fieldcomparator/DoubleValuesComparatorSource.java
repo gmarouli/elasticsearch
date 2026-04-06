@@ -26,6 +26,7 @@ import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.IndexFieldData;
 import org.elasticsearch.index.fielddata.IndexNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.MultiValueMode;
 import org.elasticsearch.search.sort.BucketedSort;
@@ -55,12 +56,12 @@ public class DoubleValuesComparatorSource extends IndexFieldData.XFieldComparato
         return SortField.Type.DOUBLE;
     }
 
-    protected SortedNumericDoubleValues getValues(LeafReaderContext context) throws IOException {
-        return indexFieldData.load(context).getDoubleValues();
+    protected SortedNumericValues getValues(LeafReaderContext context) throws IOException {
+        return indexFieldData.load(context).getValues();
     }
 
     private DenseDoubleValues getDenseDoubleValues(LeafReaderContext context, double missingValue) throws IOException {
-        final SortedNumericDoubleValues values = getValues(context);
+        final SortedNumericValues values = getValues(context);
         if (nested == null) {
             return FieldData.replaceMissing(sortMode.select(values), missingValue);
         } else {

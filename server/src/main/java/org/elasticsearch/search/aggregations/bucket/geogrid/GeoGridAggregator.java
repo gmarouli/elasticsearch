@@ -15,6 +15,7 @@ import org.elasticsearch.common.util.LongArray;
 import org.elasticsearch.common.util.ObjectArray;
 import org.elasticsearch.core.Releasables;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.search.aggregations.AggregationExecutionContext;
 import org.elasticsearch.search.aggregations.Aggregator;
 import org.elasticsearch.search.aggregations.AggregatorFactories;
@@ -76,7 +77,7 @@ public abstract class GeoGridAggregator<T extends InternalGeoGrid<?>> extends Bu
     @Override
     public LeafBucketCollector getLeafCollector(final AggregationExecutionContext aggCtx, final LeafBucketCollector sub)
         throws IOException {
-        final SortedNumericLongValues values = valuesSource.longValues(aggCtx.getLeafReaderContext());
+        final SortedNumericValues values = valuesSource.values(aggCtx.getLeafReaderContext());
         final LongValues singleton = values.unwrapSingletonLongValues();
         return singleton != null ? getLeafCollector(singleton, sub) : getLeafCollector(values, sub);
     }
@@ -99,7 +100,7 @@ public abstract class GeoGridAggregator<T extends InternalGeoGrid<?>> extends Bu
         };
     }
 
-    private LeafBucketCollector getLeafCollector(final SortedNumericLongValues values, final LeafBucketCollector sub) {
+    private LeafBucketCollector getLeafCollector(final SortedNumericValues values, final LeafBucketCollector sub) {
         return new LeafBucketCollectorBase(sub, null) {
             @Override
             public void collect(int doc, long owningBucketOrd) throws IOException {

@@ -11,6 +11,7 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.internal.hppc.IntArrayList;
 import org.elasticsearch.action.downsample.DownsampleConfig;
 import org.elasticsearch.index.fielddata.IndexFieldData;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.mapper.flattened.FlattenedFieldMapper;
 import org.elasticsearch.index.query.SearchExecutionContext;
@@ -61,7 +62,7 @@ abstract class AbstractFieldDownsampler<T> implements DownsampleFieldSerializer 
     /**
      * @return the leaf reader that will retrieve the doc values for this field.
      */
-    public abstract T getLeaf(LeafReaderContext context) throws IOException;
+    public abstract SortedNumericValues getLeaf(LeafReaderContext context) throws IOException;
 
     /**
      * Collects the values for this field of the doc ids requested.

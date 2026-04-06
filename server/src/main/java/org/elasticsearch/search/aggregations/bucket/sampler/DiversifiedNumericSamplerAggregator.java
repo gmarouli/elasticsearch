@@ -16,6 +16,7 @@ import org.apache.lucene.search.TopDocsCollector;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.index.fielddata.AbstractNumericDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.search.aggregations.Aggregator;
 import org.elasticsearch.search.aggregations.AggregatorFactories;
 import org.elasticsearch.search.aggregations.bucket.DeferringBucketCollector;
@@ -82,7 +83,7 @@ public class DiversifiedNumericSamplerAggregator extends SamplerAggregator {
         // a lookup from elasticsearch's ValuesSource
         class ValuesDiversifiedTopDocsCollector extends DiversifiedTopDocsCollector {
 
-            private SortedNumericLongValues values;
+            private SortedNumericValues values;
 
             ValuesDiversifiedTopDocsCollector(int numHits, int maxHitsPerKey) {
                 super(numHits, maxHitsPerKey);
@@ -91,7 +92,7 @@ public class DiversifiedNumericSamplerAggregator extends SamplerAggregator {
             @Override
             protected NumericDocValues getKeys(LeafReaderContext context) {
                 try {
-                    values = valuesSource.longValues(context);
+                    values = valuesSource.values(context);
                 } catch (IOException e) {
                     throw new ElasticsearchException("Error reading values", e);
                 }

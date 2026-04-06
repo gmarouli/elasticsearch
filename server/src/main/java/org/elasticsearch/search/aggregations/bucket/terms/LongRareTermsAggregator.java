@@ -16,6 +16,7 @@ import org.elasticsearch.common.util.ObjectArray;
 import org.elasticsearch.common.util.SetBackedScalingCuckooFilter;
 import org.elasticsearch.core.Releasables;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.AggregationExecutionContext;
 import org.elasticsearch.search.aggregations.Aggregator;
@@ -64,18 +65,18 @@ public class LongRareTermsAggregator extends AbstractRareTermsAggregator {
         this.bucketOrds = LongKeyedBucketOrds.build(bigArrays(), cardinality);
     }
 
-    protected static SortedNumericLongValues getValues(ValuesSource.Numeric valuesSource, LeafReaderContext ctx) throws IOException {
-        return valuesSource.longValues(ctx);
+    protected static SortedNumericValues getValues(ValuesSource.Numeric valuesSource, LeafReaderContext ctx) throws IOException {
+        return valuesSource.values(ctx);
     }
 
     @Override
     public LeafBucketCollector getLeafCollector(AggregationExecutionContext aggCtx, LeafBucketCollector sub) throws IOException {
-        final SortedNumericLongValues values = getValues(valuesSource, aggCtx.getLeafReaderContext());
+        final SortedNumericValues values = getValues(valuesSource, aggCtx.getLeafReaderContext());
         final LongValues singleton = values.unwrapSingletonLongValues();
         return singleton != null ? getLeafCollector(singleton, sub) : getLeafCollector(values, sub);
     }
 
-    private LeafBucketCollector getLeafCollector(SortedNumericLongValues values, LeafBucketCollector sub) {
+    private LeafBucketCollector getLeafCollector(SortedNumericValues values, LeafBucketCollector sub) {
         return new LeafBucketCollectorBase(sub, values) {
             @Override
             public void collect(int docId, long owningBucketOrd) throws IOException {

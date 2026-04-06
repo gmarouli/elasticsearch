@@ -18,6 +18,7 @@ import org.elasticsearch.common.util.IntArray;
 import org.elasticsearch.common.util.LongArray;
 import org.elasticsearch.core.Releasables;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.AggregationExecutionContext;
 import org.elasticsearch.search.aggregations.Aggregator;
@@ -124,7 +125,7 @@ abstract class AutoDateHistogramAggregator extends DeferableBucketAggregator {
         return deferringCollector;
     }
 
-    protected abstract LeafBucketCollector getLeafCollector(SortedNumericLongValues values, LeafBucketCollector sub) throws IOException;
+    protected abstract LeafBucketCollector getLeafCollector(SortedNumericValues values, LeafBucketCollector sub) throws IOException;
 
     protected abstract LeafBucketCollector getLeafCollector(LongValues values, LeafBucketCollector sub) throws IOException;
 
@@ -133,7 +134,7 @@ abstract class AutoDateHistogramAggregator extends DeferableBucketAggregator {
         if (valuesSource == null) {
             return LeafBucketCollector.NO_OP_COLLECTOR;
         }
-        final SortedNumericLongValues values = valuesSource.longValues(aggCtx.getLeafReaderContext());
+        final SortedNumericValues values = valuesSource.values(aggCtx.getLeafReaderContext());
         final LongValues singleton = values.unwrapSingletonLongValues();
         return singleton != null ? getLeafCollector(singleton, sub) : getLeafCollector(values, sub);
     }

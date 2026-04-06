@@ -29,7 +29,7 @@ final class CountMethodValueSource extends FieldDataBasedDoubleValuesSource {
     @Override
     public DoubleValues getValues(LeafReaderContext ctx, DoubleValues scores) {
         LeafNumericFieldData leafData = (LeafNumericFieldData) fieldData.load(ctx);
-        final SortedNumericDoubleValues values = leafData.getDoubleValues();
+        final SortedNumericValues values = leafData.getValues();
         return new DoubleValues() {
             @Override
             public double doubleValue() {

@@ -29,6 +29,7 @@ import org.elasticsearch.index.fielddata.IndexNumericFieldData;
 import org.elasticsearch.index.fielddata.IndexNumericFieldData.NumericType;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.fielddata.plain.SortedNumericIndexFieldData;
 import org.elasticsearch.lucene.comparators.XLongComparator;
 import org.elasticsearch.lucene.comparators.XNumericComparator;
@@ -47,7 +48,7 @@ import java.util.function.Function;
 public class LongValuesComparatorSource extends IndexFieldData.XFieldComparatorSource {
 
     final IndexNumericFieldData indexFieldData;
-    private final Function<SortedNumericLongValues, SortedNumericLongValues> converter;
+    private final Function<SortedNumericValues, SortedNumericLongValues> converter;
     private final NumericType targetNumericType;
 
     private boolean alwaysMatchTailQuery = false;
@@ -67,7 +68,7 @@ public class LongValuesComparatorSource extends IndexFieldData.XFieldComparatorS
         @Nullable Object missingValue,
         MultiValueMode sortMode,
         Nested nested,
-        Function<SortedNumericLongValues, SortedNumericLongValues> converter,
+        Function<SortedNumericValues, SortedNumericLongValues> converter,
         NumericType targetNumericType
     ) {
         super(missingValue, sortMode, nested);
@@ -85,21 +86,21 @@ public class LongValuesComparatorSource extends IndexFieldData.XFieldComparatorS
         this.alwaysMatchTailQuery = true;
     }
 
-    private SortedNumericLongValues loadDocValues(LeafReaderContext context) {
+    private SortedNumericValues loadDocValues(LeafReaderContext context) {
         final LeafNumericFieldData data = indexFieldData.load(context);
-        SortedNumericLongValues values;
+        SortedNumericValues values;
         if (data instanceof SortedNumericIndexFieldData.NanoSecondFieldData) {
             values = ((SortedNumericIndexFieldData.NanoSecondFieldData) data).getLongValuesAsNanos();
         } else {
-            values = data.getLongValues();
+            values = data.getValues();
         }
         return converter != null ? converter.apply(values) : values;
     }
 
     DenseLongValues getLongValues(LeafReaderContext context, long missingValue) throws IOException {
-        final SortedNumericLongValues values = loadDocValues(context);
+        final SortedNumericValues values = loadDocValues(context);
         if (nested == null) {
-            return FieldData.replaceMissing(sortMode.select(values), missingValue);
+            return FieldData.replaceMissing(sortMode.selectLongValues(values), missingValue);
         }
         final BitSet rootDocs = nested.rootDocs(context);
         final DocIdSetIterator innerDocs = nested.innerDocs(context);

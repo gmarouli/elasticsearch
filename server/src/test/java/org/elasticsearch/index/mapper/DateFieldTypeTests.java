@@ -33,6 +33,7 @@ import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.index.fielddata.IndexNumericFieldData;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.fielddata.plain.SortedNumericIndexFieldData;
 import org.elasticsearch.index.mapper.DateFieldMapper.DateFieldType;
 import org.elasticsearch.index.mapper.DateFieldMapper.Resolution;
@@ -562,7 +563,7 @@ public class DateFieldTypeTests extends FieldTypeTestCase {
         DirectoryReader reader = DirectoryReader.open(w);
         assertTrue(reader.leaves().size() > 0);
         LeafNumericFieldData a = fieldData.load(reader.leaves().get(0).reader().getContext());
-        SortedNumericLongValues docValues = a.getLongValues();
+        SortedNumericValues docValues = a.getValues();
         assertTrue(docValues.advanceExact(0));
         assertTrue(docValues.advanceExact(1));
         reader.close();

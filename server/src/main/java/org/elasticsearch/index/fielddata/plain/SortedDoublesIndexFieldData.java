@@ -141,38 +141,22 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
      * <p>
      * Although the API is multi-valued, most codecs in Lucene specialize
      * for the case where documents have at most one value. In this case
-     * {@link FieldData#unwrapSingleton(SortedNumericDoubleValues)} will return
+     * {@link SortedNumericValues#unwrapSingletonDoubleValues()}  will return
      * the underlying single-valued NumericDoubleValues representation.
      */
     static final class SortedNumericHalfFloatFieldData extends LeafDoubleFieldData {
         final LeafReader reader;
         final String field;
-        private final ToScriptFieldFactory<SortedNumericDoubleValues> toScriptFieldFactory;
+        private final ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory;
 
         SortedNumericHalfFloatFieldData(
             LeafReader reader,
             String field,
-            ToScriptFieldFactory<SortedNumericDoubleValues> toScriptFieldFactory
+            ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory
         ) {
             this.reader = reader;
             this.field = field;
             this.toScriptFieldFactory = toScriptFieldFactory;
-        }
-
-        @Override
-        public SortedNumericDoubleValues getDoubleValues() {
-            try {
-                SortedNumericDocValues raw = DocValues.getSortedNumeric(reader, field);
-
-                NumericDocValues single = DocValues.unwrapSingleton(raw);
-                if (single != null) {
-                    return FieldData.singleton(new SingleHalfFloatValues(single));
-                } else {
-                    return new MultiHalfFloatValues(raw);
-                }
-            } catch (IOException e) {
-                throw new IllegalStateException("Cannot load doc values", e);
-            }
         }
 
         @Override
@@ -193,7 +177,7 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
 
         @Override
         public DocValuesScriptFieldFactory getScriptFieldFactory(String name) {
-            return toScriptFieldFactory.getScriptFieldFactory(getDoubleValues(), name);
+            return toScriptFieldFactory.getScriptFieldFactory(getValues(), name);
         }
     }
 
@@ -254,34 +238,18 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
      * <p>
      * Although the API is multi-valued, most codecs in Lucene specialize
      * for the case where documents have at most one value. In this case
-     * {@link FieldData#unwrapSingleton(SortedNumericDoubleValues)} will return
+     * {@link SortedNumericValues#unwrapSingletonDoubleValues()} will return
      * the underlying single-valued NumericDoubleValues representation.
      */
     static final class SortedNumericFloatFieldData extends LeafDoubleFieldData {
         final LeafReader reader;
         final String field;
-        private final ToScriptFieldFactory<SortedNumericDoubleValues> toScriptFieldFactory;
+        private final ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory;
 
-        SortedNumericFloatFieldData(LeafReader reader, String field, ToScriptFieldFactory<SortedNumericDoubleValues> toScriptFieldFactory) {
+        SortedNumericFloatFieldData(LeafReader reader, String field, ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory) {
             this.reader = reader;
             this.field = field;
             this.toScriptFieldFactory = toScriptFieldFactory;
-        }
-
-        @Override
-        public SortedNumericDoubleValues getDoubleValues() {
-            try {
-                SortedNumericDocValues raw = DocValues.getSortedNumeric(reader, field);
-
-                NumericDocValues single = DocValues.unwrapSingleton(raw);
-                if (single != null) {
-                    return FieldData.singleton(new SingleFloatValues(single));
-                } else {
-                    return new MultiFloatValues(raw);
-                }
-            } catch (IOException e) {
-                throw new IllegalStateException("Cannot load doc values", e);
-            }
         }
 
         @Override
@@ -302,7 +270,7 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
 
         @Override
         public DocValuesScriptFieldFactory getScriptFieldFactory(String name) {
-            return toScriptFieldFactory.getScriptFieldFactory(getDoubleValues(), name);
+            return toScriptFieldFactory.getScriptFieldFactory(getValues(), name);
         }
     }
 
@@ -369,26 +337,16 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
     static final class SortedNumericDoubleFieldData extends LeafDoubleFieldData {
         final LeafReader reader;
         final String field;
-        protected final ToScriptFieldFactory<SortedNumericDoubleValues> toScriptFieldFactory;
+        protected final ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory;
 
         SortedNumericDoubleFieldData(
             LeafReader reader,
             String field,
-            ToScriptFieldFactory<SortedNumericDoubleValues> toScriptFieldFactory
+            ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory
         ) {
             this.reader = reader;
             this.field = field;
             this.toScriptFieldFactory = toScriptFieldFactory;
-        }
-
-        @Override
-        public SortedNumericDoubleValues getDoubleValues() {
-            try {
-                SortedNumericDocValues raw = DocValues.getSortedNumeric(reader, field);
-                return FieldData.sortableLongBitsToDoubles(SortedNumericLongValues.wrap(raw));
-            } catch (IOException e) {
-                throw new IllegalStateException("Cannot load doc values", e);
-            }
         }
 
         @Override
@@ -403,7 +361,7 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
 
         @Override
         public DocValuesScriptFieldFactory getScriptFieldFactory(String name) {
-            return toScriptFieldFactory.getScriptFieldFactory(getDoubleValues(), name);
+            return toScriptFieldFactory.getScriptFieldFactory(getValues(), name);
         }
     }
 }

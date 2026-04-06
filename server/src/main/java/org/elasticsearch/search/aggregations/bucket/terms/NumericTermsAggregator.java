@@ -20,6 +20,7 @@ import org.elasticsearch.core.Releasable;
 import org.elasticsearch.core.Releasables;
 import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.AggregationExecutionContext;
 import org.elasticsearch.search.aggregations.Aggregator;
@@ -234,7 +235,7 @@ public final class NumericTermsAggregator extends TermsAggregator {
         /**
          * Resolve the doc values to collect results of this type.
          */
-        abstract SortedNumericLongValues getValues(LeafReaderContext ctx) throws IOException;
+        abstract SortedNumericValues getValues(LeafReaderContext ctx) throws IOException;
 
         /**
          * Wrap the "standard" numeric terms collector to collect any more
@@ -367,8 +368,8 @@ public final class NumericTermsAggregator extends TermsAggregator {
         }
 
         @Override
-        SortedNumericLongValues getValues(LeafReaderContext ctx) throws IOException {
-            return valuesSource.longValues(ctx);
+        SortedNumericValues getValues(LeafReaderContext ctx) throws IOException {
+            return valuesSource.values(ctx);
         }
 
         @Override
@@ -547,8 +548,8 @@ public final class NumericTermsAggregator extends TermsAggregator {
         }
 
         @Override
-        SortedNumericLongValues getValues(LeafReaderContext ctx) throws IOException {
-            return valuesSource.longValues(ctx);
+        SortedNumericValues getValues(LeafReaderContext ctx) throws IOException {
+            return valuesSource.values(ctx);
         }
 
         @Override

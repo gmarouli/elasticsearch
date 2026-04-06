@@ -86,24 +86,11 @@ public enum FieldData {
     /**
      * Returns a {@link DocValueBits} representing all documents from <code>doubleValues</code> that have a value.
      */
-    public static DocValueBits docsWithValue(final SortedNumericDoubleValues doubleValues) {
+    public static DocValueBits docsWithValue(final SortedNumericValues values) {
         return new DocValueBits() {
             @Override
             public boolean advanceExact(int doc) throws IOException {
-                return doubleValues.advanceExact(doc);
-            }
-        };
-    }
-
-    /**
-     * Returns a {@link DocValueBits} representing all documents from <code>docValues</code> that have
-     * a value.
-     */
-    public static DocValueBits docsWithValue(final SortedNumericLongValues docValues) {
-        return new DocValueBits() {
-            @Override
-            public boolean advanceExact(int doc) throws IOException {
-                return docValues.advanceExact(doc);
+                return values.advanceExact(doc);
             }
         };
     }

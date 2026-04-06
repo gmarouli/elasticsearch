@@ -97,7 +97,7 @@ public final class LuceneMaxFactory extends LuceneOperator.Factory {
         };
 
         public final LongValues multiValueMode(SortedNumericDocValues sortedNumericDocValues) {
-            return MultiValueMode.MAX.select(SortedNumericLongValues.wrap(sortedNumericDocValues));
+            return MultiValueMode.MAX.selectLongValues(SortedNumericLongValues.wrap(sortedNumericDocValues));
         }
 
         public final long fromPointValues(PointValues pointValues) throws IOException {

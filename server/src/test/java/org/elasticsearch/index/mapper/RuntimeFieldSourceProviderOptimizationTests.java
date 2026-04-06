@@ -89,7 +89,7 @@ public class RuntimeFieldSourceProviderOptimizationTests extends ESSingleNodeTes
                 // Test that script runtime field data works as expected with the optimization:
                 var fieldData = (LongScriptFieldData) context.getForField(fieldType, MappedFieldType.FielddataOperation.SCRIPT);
                 var leafFieldData = fieldData.load(leafReaderContext);
-                var sortedNumericDocValues = (LongScriptDocValues) leafFieldData.getLongValues();
+                var sortedNumericDocValues = (LongScriptDocValues) leafFieldData.getValues();
                 for (int i = 0; i < 256; i++) {
                     boolean result = sortedNumericDocValues.advanceExact(i);
                     assertThat(result, equalTo(true));
@@ -140,7 +140,7 @@ public class RuntimeFieldSourceProviderOptimizationTests extends ESSingleNodeTes
                 // Test that script runtime field data works as expected with the optimization:
                 var fieldData = (LongScriptFieldData) context.getForField(fieldType, MappedFieldType.FielddataOperation.SCRIPT);
                 var leafFieldData = fieldData.load(leafReaderContext);
-                var sortedNumericDocValues = (LongScriptDocValues) leafFieldData.getLongValues();
+                var sortedNumericDocValues = (LongScriptDocValues) leafFieldData.getValues();
                 for (int i = 0; i < 256; i++) {
                     boolean result = sortedNumericDocValues.advanceExact(i);
                     assertThat(result, equalTo(true));

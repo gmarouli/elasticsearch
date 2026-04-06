@@ -11,10 +11,7 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.internal.hppc.IntArrayList;
 import org.elasticsearch.action.downsample.DownsampleConfig;
 import org.elasticsearch.common.breaker.NoopCircuitBreaker;
-import org.elasticsearch.index.fielddata.HistogramValue;
-import org.elasticsearch.index.fielddata.HistogramValues;
-import org.elasticsearch.index.fielddata.IndexFieldData;
-import org.elasticsearch.index.fielddata.LeafHistogramFieldData;
+import org.elasticsearch.index.fielddata.*;
 import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.search.aggregations.metrics.TDigestExecutionHint;
 import org.elasticsearch.search.aggregations.metrics.TDigestState;
@@ -47,7 +44,7 @@ abstract class TDigestHistogramFieldDownsampler extends AbstractFieldDownsampler
     }
 
     @Override
-    public HistogramValues getLeaf(LeafReaderContext context) throws IOException {
+    public SortedNumericValues getLeaf(LeafReaderContext context) throws IOException {
         LeafHistogramFieldData histogramFieldData = (LeafHistogramFieldData) fieldData.load(context);
         return histogramFieldData.getHistogramValues();
     }

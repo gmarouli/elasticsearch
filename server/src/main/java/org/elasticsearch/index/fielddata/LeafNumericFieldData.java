@@ -15,22 +15,8 @@ package org.elasticsearch.index.fielddata;
 public interface LeafNumericFieldData extends LeafFieldData {
 
     /**
-     * Get an integer view of the values of this segment. If the implementation
-     * stores floating-point numbers then these values will return the same
-     * values but casted to longs.
-     */
-    SortedNumericLongValues getLongValues();
-
-    /**
-     * Return a floating-point view of the values in this segment. If the
-     * implementation stored integers then the returned doubles would be the
-     * same ones as you would get from casting to a double.
-     */
-    SortedNumericDoubleValues getDoubleValues();
-
-    /**
      * Return a view of the values in this segment, the integer or the floating-point
-     * view can be accessed via the next*Value accessors. If the
+     * view can be accessed via the nextDoubleValue or nextLongValue accessors. If the
      * implementation stored integers then the returned doubles would be the
      * same ones as you would get from casting to a double and vice versa.
      */

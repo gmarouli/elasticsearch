@@ -94,7 +94,7 @@ public class HistogramValuesSourceBuilder extends CompositeValuesSourceBuilder<H
                         return new DoubleValuesSource(
                             bigArrays,
                             compositeValuesSourceConfig.fieldType(),
-                            numericValuesSource::doubleValues,
+                            numericValuesSource::values,
                             compositeValuesSourceConfig.format(),
                             compositeValuesSourceConfig.missingBucket(),
                             compositeValuesSourceConfig.missingOrder(),

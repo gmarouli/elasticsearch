@@ -29,7 +29,7 @@ import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.index.fielddata.FieldDataContext;
 import org.elasticsearch.index.fielddata.IndexFieldDataCache;
 import org.elasticsearch.index.fielddata.IndexNumericFieldData;
-import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.mapper.IndexType;
 import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.mapper.MappingLookup;
@@ -231,7 +231,7 @@ public class ScriptScoreBenchmark {
             return new ScoreScript.LeafFactory() {
                 @Override
                 public ScoreScript newInstance(DocReader docReader) throws IOException {
-                    SortedNumericLongValues values = ifd.load(((DocValuesDocReader) docReader).getLeafReaderContext()).getLongValues();
+                    SortedNumericValues values = ifd.load(((DocValuesDocReader) docReader).getLeafReaderContext()).getValues();
                     return new ScoreScript(params, null, docReader) {
                         private int docId;
 

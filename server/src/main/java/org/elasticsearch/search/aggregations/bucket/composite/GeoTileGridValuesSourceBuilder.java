@@ -106,7 +106,7 @@ public class GeoTileGridValuesSourceBuilder extends CompositeValuesSourceBuilder
                         return new GeoTileValuesSource(
                             bigArrays,
                             compositeValuesSourceConfig.fieldType(),
-                            cis::longValues,
+                            cis::values,
                             LongUnaryOperator.identity(),
                             compositeValuesSourceConfig.format(),
                             compositeValuesSourceConfig.missingBucket(),

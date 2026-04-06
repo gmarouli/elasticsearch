@@ -84,7 +84,7 @@ public class BytesRefFieldComparatorSource extends IndexFieldData.XFieldComparat
                     final SortedSetDocValues values = ((IndexOrdinalsFieldData) indexFieldData).load(context).getOrdinalsValues();
                     final SortedDocValues selectedValues;
                     if (nested == null) {
-                        selectedValues = sortMode.select(values);
+                        selectedValues = sortMode.selectDoubleValues(values);
                     } else {
                         final BitSet rootDocs = nested.rootDocs(context);
                         final DocIdSetIterator innerDocs = nested.innerDocs(context);

@@ -11,18 +11,19 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.elasticsearch.index.fielddata.IndexNumericFieldData;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
 import org.elasticsearch.index.fielddata.SortedNumericLongValues;
+import org.elasticsearch.index.fielddata.SortedNumericValues;
 import org.elasticsearch.index.mapper.IndexType;
 import org.elasticsearch.script.field.ToScriptFieldFactory;
 import org.elasticsearch.search.aggregations.support.ValuesSourceType;
 
 public class UnsignedLongIndexFieldData extends IndexNumericFieldData {
     private final IndexNumericFieldData signedLongIFD;
-    protected final ToScriptFieldFactory<SortedNumericLongValues> toScriptFieldFactory;
+    protected final ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory;
     protected final IndexType indexType;
 
     UnsignedLongIndexFieldData(
         IndexNumericFieldData signedLongFieldData,
-        ToScriptFieldFactory<SortedNumericLongValues> toScriptFieldFactory,
+        ToScriptFieldFactory<SortedNumericValues> toScriptFieldFactory,
         IndexType indexType
     ) {
         this.signedLongIFD = signedLongFieldData;
