@@ -12,6 +12,7 @@ package org.elasticsearch.index.fielddata;
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.DoubleValues;
 import org.apache.lucene.util.NumericUtils;
 
@@ -48,44 +49,83 @@ public abstract class SortedNumericDoubleValues {
     public abstract int docValueCount();
 
     /**
+     * @return an iterator over doc ids working togerther with {@link #advanceExact(int)} and {@link #nextValue()}
+     *         or null if not supported.
+     */
+    public DocIdSetIterator iterator() {
+        return null;
+    }
+
+    public DoubleValues getDoubleValues() {
+        return null;
+    }
+
+    public boolean isSingleton() {
+        return false;
+    }
+
+    /**
      * Converts a {@link SortedNumericDoubleValues} values to a singly valued {@link DoubleValues}
      * if possible
      */
     public static DoubleValues unwrapSingleton(SortedNumericDoubleValues values) {
-        if (values instanceof SortedNumericDoubleValues.SingletonSortedNumericDoubleValues sv) {
-            return sv.values;
-        }
-        return null;
+        return values.getDoubleValues();
     }
 
     /**
      * Converts a {@link DoubleValues} to a {@link SortedNumericDoubleValues}
      */
     public static SortedNumericDoubleValues singleton(DoubleValues values) {
-        return new SortedNumericDoubleValues.SingletonSortedNumericDoubleValues(values);
+        return new Singleton() {
+            @Override
+            public boolean advanceExact(int target) throws IOException {
+                return values.advanceExact(target);
+            }
+
+            @Override
+            public double nextValue() throws IOException {
+                return values.doubleValue();
+            }
+
+            @Override
+            public DoubleValues getDoubleValues() {
+                return values;
+            }
+
+            public boolean isSingleton() {
+                return true;
+            }
+        };
     }
 
-    private static class SingletonSortedNumericDoubleValues extends SortedNumericDoubleValues {
+    public abstract static class Singleton extends SortedNumericDoubleValues {
 
-        private final DoubleValues values;
+        private DoubleValues values;
 
-        private SingletonSortedNumericDoubleValues(DoubleValues values) {
-            this.values = values;
-        }
+        public Singleton() {}
 
         @Override
-        public boolean advanceExact(int target) throws IOException {
-            return values.advanceExact(target);
-        }
-
-        @Override
-        public double nextValue() throws IOException {
-            return values.doubleValue();
-        }
-
-        @Override
-        public int docValueCount() {
+        public final int docValueCount() {
             return 1;
+        }
+
+        @Override
+        public DoubleValues getDoubleValues() {
+            if (values == null) {
+                var singleton = this;
+                values = new DoubleValues() {
+                    @Override
+                    public double doubleValue() throws IOException {
+                        return singleton.nextValue();
+                    }
+
+                    @Override
+                    public boolean advanceExact(int doc) throws IOException {
+                        return singleton.advanceExact(doc);
+                    }
+                };
+            }
+            return values;
         }
     }
 
@@ -99,9 +139,9 @@ public abstract class SortedNumericDoubleValues {
     public static SortedNumericDoubleValues wrap(SortedNumericDocValues values) {
         NumericDocValues singleton = DocValues.unwrapSingleton(values);
         if (singleton != null) {
-            return new SortedNumericDoubleValues.SingletonSortedNumericDoubleValues(new DoubleValues() {
+            return new Singleton() {
                 @Override
-                public double doubleValue() throws IOException {
+                public double nextValue() throws IOException {
                     return NumericUtils.sortableLongToDouble(singleton.longValue());
                 }
 
@@ -109,7 +149,12 @@ public abstract class SortedNumericDoubleValues {
                 public boolean advanceExact(int doc) throws IOException {
                     return singleton.advanceExact(doc);
                 }
-            });
+
+                @Override
+                public DocIdSetIterator iterator() {
+                    return singleton;
+                }
+            };
         }
         return new SortedNumericDoubleValues() {
             @Override
@@ -125,6 +170,11 @@ public abstract class SortedNumericDoubleValues {
             @Override
             public int docValueCount() {
                 return values.docValueCount();
+            }
+
+            @Override
+            public DocIdSetIterator iterator() {
+                return values;
             }
         };
     }

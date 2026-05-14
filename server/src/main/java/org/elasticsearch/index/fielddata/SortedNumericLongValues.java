@@ -12,6 +12,7 @@ package org.elasticsearch.index.fielddata;
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.LongValues;
 
 import java.io.IOException;
@@ -63,44 +64,83 @@ public abstract class SortedNumericLongValues {
     public abstract int docValueCount();
 
     /**
+     * @return an iterator over doc ids working togerther with {@link #advanceExact(int)} and {@link #nextValue()}
+     *         or null if not supported.
+     */
+    public DocIdSetIterator iterator() {
+        return null;
+    }
+
+    public LongValues getLongValues() {
+        return null;
+    }
+
+    public boolean isSingleton() {
+        return false;
+    }
+
+    /**
      * Converts a {@link SortedNumericLongValues} values to a singly valued {@link LongValues}
      * if possible
      */
     public static LongValues unwrapSingleton(SortedNumericLongValues values) {
-        if (values instanceof SingletonSortedNumericLongValues sv) {
-            return sv.values;
-        }
-        return null;
+        return values.getLongValues();
     }
 
     /**
      * Converts a {@link LongValues} to a {@link SortedNumericLongValues}
      */
     public static SortedNumericLongValues singleton(LongValues values) {
-        return new SingletonSortedNumericLongValues(values);
+        return new Singleton() {
+
+            @Override
+            public boolean advanceExact(int target) throws IOException {
+                return values.advanceExact(target);
+            }
+
+            @Override
+            public long nextValue() throws IOException {
+                return values.longValue();
+            }
+
+            @Override
+            public LongValues getLongValues() {
+                return values;
+            }
+
+            public boolean isSingleton() {
+                return true;
+            }
+        };
     }
 
-    private static class SingletonSortedNumericLongValues extends SortedNumericLongValues {
+    abstract static class Singleton extends SortedNumericLongValues {
 
-        private final LongValues values;
+        private LongValues values;
 
-        private SingletonSortedNumericLongValues(LongValues values) {
-            this.values = values;
-        }
+        protected Singleton() {}
 
         @Override
-        public boolean advanceExact(int target) throws IOException {
-            return values.advanceExact(target);
-        }
-
-        @Override
-        public long nextValue() throws IOException {
-            return values.longValue();
-        }
-
-        @Override
-        public int docValueCount() {
+        public final int docValueCount() {
             return 1;
+        }
+
+        public LongValues getLongValues() {
+            if (values == null) {
+                var singleton = this;
+                values = new LongValues() {
+                    @Override
+                    public long longValue() throws IOException {
+                        return singleton.nextValue();
+                    }
+
+                    @Override
+                    public boolean advanceExact(int doc) throws IOException {
+                        return singleton.advanceExact(doc);
+                    }
+                };
+            }
+            return values;
         }
     }
 
@@ -114,9 +154,9 @@ public abstract class SortedNumericLongValues {
     public static SortedNumericLongValues wrap(SortedNumericDocValues values) {
         NumericDocValues singleton = DocValues.unwrapSingleton(values);
         if (singleton != null) {
-            return new SingletonSortedNumericLongValues(new LongValues() {
+            return new Singleton() {
                 @Override
-                public long longValue() throws IOException {
+                public long nextValue() throws IOException {
                     return singleton.longValue();
                 }
 
@@ -124,7 +164,12 @@ public abstract class SortedNumericLongValues {
                 public boolean advanceExact(int doc) throws IOException {
                     return singleton.advanceExact(doc);
                 }
-            });
+
+                @Override
+                public DocIdSetIterator iterator() {
+                    return singleton;
+                }
+            };
         }
         return new SortedNumericLongValues() {
             @Override
@@ -140,6 +185,11 @@ public abstract class SortedNumericLongValues {
             @Override
             public int docValueCount() {
                 return values.docValueCount();
+            }
+
+            @Override
+            public DocIdSetIterator iterator() {
+                return values;
             }
         };
     }
