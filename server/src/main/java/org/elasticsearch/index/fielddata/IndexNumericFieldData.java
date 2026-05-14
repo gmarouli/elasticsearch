@@ -9,6 +9,7 @@
 
 package org.elasticsearch.index.fielddata;
 
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.SortedNumericSelector;
 import org.apache.lucene.search.SortedNumericSortField;
@@ -300,6 +301,11 @@ public abstract class IndexNumericFieldData implements IndexFieldData<LeafNumeri
             @Override
             public int docValueCount() {
                 return values.docValueCount();
+            }
+
+            @Override
+            public DocIdSetIterator iterator() {
+                return values.iterator();
             }
         };
     }

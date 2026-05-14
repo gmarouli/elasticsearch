@@ -10,6 +10,7 @@
 package org.elasticsearch.index.query.functionscore;
 
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.DoubleValues;
 import org.apache.lucene.search.Explanation;
 import org.elasticsearch.ElasticsearchParseException;
@@ -500,6 +501,11 @@ public abstract class DecayFunctionBuilder<DFB extends DecayFunctionBuilder<DFB>
                     } else {
                         return false;
                     }
+                }
+
+                @Override
+                public DocIdSetIterator iterator() {
+                    return doubleValues.iterator();
                 }
             }), 0);
         }

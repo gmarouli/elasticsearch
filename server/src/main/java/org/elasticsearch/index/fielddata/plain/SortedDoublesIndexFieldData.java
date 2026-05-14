@@ -16,6 +16,7 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.sandbox.document.HalfFloatPoint;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.DoubleValues;
 import org.apache.lucene.util.NumericUtils;
 import org.elasticsearch.index.fielddata.FieldData;
@@ -224,6 +225,11 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
         public int docValueCount() {
             return in.docValueCount();
         }
+
+        @Override
+        public DocIdSetIterator iterator() {
+            return in;
+        }
     }
 
     /**
@@ -316,6 +322,11 @@ public class SortedDoublesIndexFieldData extends IndexNumericFieldData {
         @Override
         public int docValueCount() {
             return in.docValueCount();
+        }
+
+        @Override
+        public DocIdSetIterator iterator() {
+            return in;
         }
     }
 

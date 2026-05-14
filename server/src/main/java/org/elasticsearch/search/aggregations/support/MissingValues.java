@@ -11,6 +11,7 @@ package org.elasticsearch.search.aggregations.support;
 
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.SortedSetDocValues;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.common.geo.GeoPoint;
 import org.elasticsearch.index.fielddata.AbstractSortedSetDocValues;
@@ -137,6 +138,11 @@ public enum MissingValues {
             }
 
             @Override
+            public DocIdSetIterator iterator() {
+                return values.iterator();
+            }
+
+            @Override
             public boolean advanceExact(int doc) throws IOException {
                 if (values.advanceExact(doc)) {
                     count = values.docValueCount();
@@ -185,6 +191,11 @@ public enum MissingValues {
             @Override
             public int docValueCount() {
                 return count == 0 ? 1 : count;
+            }
+
+            @Override
+            public DocIdSetIterator iterator() {
+                return values.iterator();
             }
 
             @Override

@@ -9,6 +9,7 @@
 
 package org.elasticsearch.index.fielddata;
 
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.util.NumericUtils;
 
 import java.io.IOException;
@@ -39,6 +40,11 @@ final class SortableLongBitsToSortedNumericDoubleValues extends SortedNumericDou
     @Override
     public int docValueCount() {
         return values.docValueCount();
+    }
+
+    @Override
+    public DocIdSetIterator iterator() {
+        return values.iterator();
     }
 
     /** Return the wrapped values. */

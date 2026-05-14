@@ -9,6 +9,7 @@
 
 package org.elasticsearch.index.fielddata;
 
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Scorable;
 import org.apache.lucene.util.NumericUtils;
 import org.elasticsearch.common.lucene.ScorerAware;
@@ -41,6 +42,11 @@ final class SortableLongBitsSortedNumericDocValues extends SortedNumericLongValu
     @Override
     public int docValueCount() {
         return values.docValueCount();
+    }
+
+    @Override
+    public DocIdSetIterator iterator() {
+        return values.iterator();
     }
 
     /** Return the wrapped values. */

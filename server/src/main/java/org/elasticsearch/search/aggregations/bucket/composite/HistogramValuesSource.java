@@ -10,6 +10,7 @@
 package org.elasticsearch.search.aggregations.bucket.composite;
 
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.DoubleValues;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
@@ -62,6 +63,11 @@ class HistogramValuesSource extends ValuesSource.Numeric {
             @Override
             public boolean advanceExact(int target) throws IOException {
                 return values.advanceExact(target);
+            }
+
+            @Override
+            public DocIdSetIterator iterator() {
+                return values.iterator();
             }
         };
     }

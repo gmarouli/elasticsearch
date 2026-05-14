@@ -11,6 +11,7 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.SortedNumericDocValues;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.SortedNumericSortField;
@@ -570,6 +571,11 @@ public class AggregateMetricDoubleFieldMapper extends FieldMapper {
                     // All other metrics are encoded as doubles
                     return NumericUtils.sortableLongToDouble(v);
                 }
+            }
+
+            @Override
+            public DocIdSetIterator iterator() {
+                return values;
             }
         }
 

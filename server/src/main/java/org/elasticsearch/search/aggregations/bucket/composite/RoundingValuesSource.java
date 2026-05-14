@@ -10,6 +10,7 @@
 package org.elasticsearch.search.aggregations.bucket.composite;
 
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.LongValues;
 import org.elasticsearch.common.Rounding;
 import org.elasticsearch.index.fielddata.SortedBinaryDocValues;
@@ -71,6 +72,11 @@ class RoundingValuesSource extends ValuesSource.Numeric {
             @Override
             public int docValueCount() {
                 return values.docValueCount();
+            }
+
+            @Override
+            public DocIdSetIterator iterator() {
+                return values.iterator();
             }
 
             @Override

@@ -10,6 +10,8 @@
 package org.elasticsearch.index.fielddata;
 
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.LongValues;
 import org.elasticsearch.index.mapper.ValueFetcher;
 import org.elasticsearch.indices.breaker.CircuitBreakerService;
 import org.elasticsearch.script.field.DocValuesScriptFieldFactory;
@@ -125,6 +127,16 @@ public class SourceValueFetcherSortedNumericIndexFieldData extends SourceValueFe
         @Override
         public int docValueCount() {
             return values.size();
+        }
+
+        @Override
+        public DocIdSetIterator iterator() {
+            return null;
+        }
+
+        @Override
+        public LongValues getLongValues() {
+            return null;
         }
 
         @Override
