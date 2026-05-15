@@ -13,6 +13,7 @@ import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.DoubleValues;
 import org.apache.lucene.search.LongValues;
 
 import java.io.IOException;
@@ -71,10 +72,16 @@ public abstract class SortedNumericLongValues {
         return null;
     }
 
+    /**
+     * Converts a {@link SortedNumericLongValues} to a {@link LongValues} if it's a singleton.
+     */
     public LongValues getLongValues() {
         return null;
     }
 
+    /**
+     * @return true if it's a singleton, false when multivalued
+     */
     public boolean isSingleton() {
         return false;
     }
@@ -84,7 +91,7 @@ public abstract class SortedNumericLongValues {
      * if possible
      */
     public static LongValues unwrapSingleton(SortedNumericLongValues values) {
-        return values.getLongValues();
+        return values != null ? values.getLongValues() : null;
     }
 
     /**

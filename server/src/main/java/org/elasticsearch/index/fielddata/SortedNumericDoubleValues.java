@@ -56,10 +56,16 @@ public abstract class SortedNumericDoubleValues {
         return null;
     }
 
+    /**
+     * Converts a {@link SortedNumericDoubleValues} to a {@link DoubleValues} if it's a singleton.
+     */
     public DoubleValues getDoubleValues() {
         return null;
     }
 
+    /**
+     * @return true if it's a singleton, false when multivalued
+     */
     public boolean isSingleton() {
         return false;
     }
@@ -69,7 +75,7 @@ public abstract class SortedNumericDoubleValues {
      * if possible
      */
     public static DoubleValues unwrapSingleton(SortedNumericDoubleValues values) {
-        return values.getDoubleValues();
+        return values != null ? values.getDoubleValues() : null;
     }
 
     /**
