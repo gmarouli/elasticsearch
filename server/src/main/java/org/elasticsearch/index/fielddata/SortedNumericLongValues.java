@@ -13,7 +13,6 @@ import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.DoubleValues;
 import org.apache.lucene.search.LongValues;
 
 import java.io.IOException;

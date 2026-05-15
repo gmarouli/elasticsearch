@@ -7,8 +7,7 @@
 
 package org.elasticsearch.xpack.unsignedlong;
 
-import org.apache.lucene.search.DoubleValues;
-import org.apache.lucene.search.LongValues;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.elasticsearch.index.fielddata.FieldData;
 import org.elasticsearch.index.fielddata.FormattedDocValues;
 import org.elasticsearch.index.fielddata.LeafNumericFieldData;
@@ -41,25 +40,12 @@ public class UnsignedLongLeafFieldData implements LeafNumericFieldData {
     @Override
     public SortedNumericDoubleValues getDoubleValues() {
         final SortedNumericLongValues values = signedLongFD.getLongValues();
-        final LongValues singleValues = SortedNumericLongValues.unwrapSingleton(values);
-        if (singleValues != null) {
-            return FieldData.singleton(new DoubleValues() {
+        if (values.isSingleton()) {
+            return new SortedNumericDoubleValues.Singleton() {
+
                 @Override
                 public boolean advanceExact(int doc) throws IOException {
-                    return singleValues.advanceExact(doc);
-                }
-
-                @Override
-                public double doubleValue() throws IOException {
-                    return convertUnsignedLongToDouble(singleValues.longValue());
-                }
-            });
-        } else {
-            return new SortedNumericDoubleValues() {
-
-                @Override
-                public boolean advanceExact(int target) throws IOException {
-                    return values.advanceExact(target);
+                    return values.advanceExact(doc);
                 }
 
                 @Override
@@ -68,11 +54,33 @@ public class UnsignedLongLeafFieldData implements LeafNumericFieldData {
                 }
 
                 @Override
-                public int docValueCount() {
-                    return values.docValueCount();
+                public DocIdSetIterator iterator() {
+                    return values.iterator();
                 }
             };
         }
+        return new SortedNumericDoubleValues() {
+
+            @Override
+            public boolean advanceExact(int target) throws IOException {
+                return values.advanceExact(target);
+            }
+
+            @Override
+            public double nextValue() throws IOException {
+                return convertUnsignedLongToDouble(values.nextValue());
+            }
+
+            @Override
+            public int docValueCount() {
+                return values.docValueCount();
+            }
+
+            @Override
+            public DocIdSetIterator iterator() {
+                return values.iterator();
+            }
+        };
     }
 
     @Override
