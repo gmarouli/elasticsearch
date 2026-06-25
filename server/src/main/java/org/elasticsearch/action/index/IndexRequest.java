@@ -42,6 +42,7 @@ import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentType;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -151,9 +152,10 @@ public class IndexRequest extends ReplicatedWriteRequest<IndexRequest> implement
     private Map<String, Map<String, String>> dynamicTemplateParams = Map.of();
 
     /**
-     * rawTimestamp field is used on the coordinate node, it doesn't need to be serialised.
+     * rawTimestamp and tsTimestamp fields are used on the coordinate node, they don't need to be serialised.
      */
     private Object rawTimestamp;
+    private Instant timestampAsInstant;
     private BytesRef tsid;
 
     public IndexRequest(StreamInput in) throws IOException {
@@ -980,6 +982,14 @@ public class IndexRequest extends ReplicatedWriteRequest<IndexRequest> implement
     public void setRawTimestamp(Object rawTimestamp) {
         assert this.rawTimestamp == null : "rawTimestamp only set in ingest phase, it can't be set twice";
         this.rawTimestamp = rawTimestamp;
+    }
+
+    public void setTimestampAsInstant(Instant tsTimestamp) {
+        this.timestampAsInstant = tsTimestamp;
+    }
+
+    public Instant getTimestampAsInstant() {
+        return timestampAsInstant;
     }
 
     /**
