@@ -54,8 +54,10 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.elasticsearch.action.admin.indices.create.AutoCreateAction.AUTO_CREATE_INDEX_PRIORITY_SETTING;
@@ -169,7 +171,7 @@ public class TransportPastTimeSeriesIndexCreationAction extends TransportMasterN
             }
         }
         if (hasUncovered == false) {
-            listener.onResponse(new PastTimeSeriesIndexCreationAction.Response(true, alreadyCovered));
+            listener.onResponse(new PastTimeSeriesIndexCreationAction.Response(true, alreadyCovered, Map.of()));
             return;
         }
 
@@ -241,6 +243,7 @@ public class TransportPastTimeSeriesIndexCreationAction extends TransportMasterN
                 try (var ignored = taskContext.captureResponseHeaders()) {
                     List<String> createdIndexNames = new ArrayList<>();
                     Set<Instant> coveredTimestamps = new HashSet<>();
+                    Map<Instant, String> rejectedTimestamps = new HashMap<>();
                     state = executeTask(
                         state,
                         projectResolver,
@@ -249,6 +252,7 @@ public class TransportPastTimeSeriesIndexCreationAction extends TransportMasterN
                         task,
                         createdIndexNames,
                         coveredTimestamps,
+                        rejectedTimestamps,
                         indexDurationMillis
                     );
                     stateChanged |= createdIndexNames.isEmpty() == false;
@@ -262,7 +266,13 @@ public class TransportPastTimeSeriesIndexCreationAction extends TransportMasterN
                         public void onAllNodesAcked() {
                             if (createdIndexNames.isEmpty()) {
                                 task.listener()
-                                    .onResponse(new PastTimeSeriesIndexCreationAction.Response(true, Set.copyOf(coveredTimestamps)));
+                                    .onResponse(
+                                        new PastTimeSeriesIndexCreationAction.Response(
+                                            true,
+                                            Set.copyOf(coveredTimestamps),
+                                            Map.copyOf(rejectedTimestamps)
+                                        )
+                                    );
                                 return;
                             }
                             ActiveShardsObserver.waitForActiveShards(
@@ -272,20 +282,38 @@ public class TransportPastTimeSeriesIndexCreationAction extends TransportMasterN
                                 ActiveShardCount.DEFAULT,
                                 task.ackTimeout(),
                                 multiListener.delay(task.listener())
-                                    .map(ok -> new PastTimeSeriesIndexCreationAction.Response(true, Set.copyOf(coveredTimestamps)))
+                                    .map(
+                                        ok -> new PastTimeSeriesIndexCreationAction.Response(
+                                            true,
+                                            Set.copyOf(coveredTimestamps),
+                                            Map.copyOf(rejectedTimestamps)
+                                        )
+                                    )
                             );
                         }
 
                         @Override
                         public void onAckFailure(Exception e) {
                             multiListener.delay(task.listener())
-                                .onResponse(new PastTimeSeriesIndexCreationAction.Response(false, Set.copyOf(coveredTimestamps)));
+                                .onResponse(
+                                    new PastTimeSeriesIndexCreationAction.Response(
+                                        false,
+                                        Set.copyOf(coveredTimestamps),
+                                        Map.copyOf(rejectedTimestamps)
+                                    )
+                                );
                         }
 
                         @Override
                         public void onAckTimeout() {
                             multiListener.delay(task.listener())
-                                .onResponse(new PastTimeSeriesIndexCreationAction.Response(false, Set.copyOf(coveredTimestamps)));
+                                .onResponse(
+                                    new PastTimeSeriesIndexCreationAction.Response(
+                                        false,
+                                        Set.copyOf(coveredTimestamps),
+                                        Map.copyOf(rejectedTimestamps)
+                                    )
+                                );
                         }
 
                         @Override
@@ -315,6 +343,7 @@ public class TransportPastTimeSeriesIndexCreationAction extends TransportMasterN
             PastTsdbIndexCreationTask task,
             List<String> createdIndexNames,
             Set<Instant> coveredTimestamps,
+            Map<Instant, String> rejectedTimestamps,
             long indexDurationMillis
         ) throws Exception {
             String dataStreamName = task.dataStreamName();

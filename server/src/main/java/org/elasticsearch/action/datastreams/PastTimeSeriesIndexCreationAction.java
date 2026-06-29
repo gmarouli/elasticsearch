@@ -20,6 +20,8 @@ import org.elasticsearch.core.TimeValue;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -44,6 +46,10 @@ public final class PastTimeSeriesIndexCreationAction extends ActionType<PastTime
             super(masterNodeTimeout, ackTimeout);
             this.dataStreamName = dataStreamName;
             this.timestamps = timestamps;
+        }
+
+        public Request(TimeValue masterNodeTimeout, String dataStreamName, Collection<Instant> timestamps) {
+            this(masterNodeTimeout, DEFAULT_ACK_TIMEOUT, dataStreamName, timestamps);
         }
 
         public Request(StreamInput in) throws IOException {
@@ -86,25 +92,33 @@ public final class PastTimeSeriesIndexCreationAction extends ActionType<PastTime
     public static class Response extends AcknowledgedResponse {
 
         private final Set<Instant> coveredTimestamps;
+        private final Map<Instant, String> rejectedTimestamps;
 
-        public Response(boolean acknowledged, Set<Instant> coveredTimestamps) {
+        public Response(boolean acknowledged, Set<Instant> coveredTimestamps, Map<Instant, String> rejectedTimestamps) {
             super(acknowledged);
             this.coveredTimestamps = coveredTimestamps;
+            this.rejectedTimestamps = new HashMap<>(rejectedTimestamps);
         }
 
         public Response(StreamInput in) throws IOException {
             super(in);
             this.coveredTimestamps = in.readCollectionAsSet(StreamInput::readInstant);
+            this.rejectedTimestamps = in.readMap(StreamInput::readInstant, StreamInput::readString);
         }
 
         @Override
         public void writeTo(StreamOutput out) throws IOException {
             super.writeTo(out);
             out.writeCollection(coveredTimestamps, StreamOutput::writeInstant);
+            out.writeMap(rejectedTimestamps, StreamOutput::writeInstant, StreamOutput::writeString);
         }
 
         public Set<Instant> coveredTimestamps() {
             return coveredTimestamps;
+        }
+
+        public Map<Instant, String> getRejectedTimestamps() {
+            return rejectedTimestamps;
         }
     }
 }

@@ -23,6 +23,7 @@ import org.elasticsearch.action.admin.indices.create.CreateIndexResponse;
 import org.elasticsearch.action.admin.indices.rollover.LazyRolloverAction;
 import org.elasticsearch.action.admin.indices.rollover.RolloverRequest;
 import org.elasticsearch.action.admin.indices.rollover.RolloverResponse;
+import org.elasticsearch.action.datastreams.PastTimeSeriesIndexCreationAction;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.action.support.IndexComponentSelector;
@@ -35,6 +36,7 @@ import org.elasticsearch.cluster.ProjectState;
 import org.elasticsearch.cluster.metadata.ComposableIndexTemplate;
 import org.elasticsearch.cluster.metadata.DataStream;
 import org.elasticsearch.cluster.metadata.DataStreamFailureStoreSettings;
+import org.elasticsearch.cluster.metadata.DataStreamGlobalRetentionSettings;
 import org.elasticsearch.cluster.metadata.DataStreamOptions;
 import org.elasticsearch.cluster.metadata.IndexAbstraction;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
@@ -46,8 +48,10 @@ import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.io.stream.Writeable;
 import org.elasticsearch.common.util.concurrent.AtomicArray;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.dlm.TimeSeriesEligibleWriteWindowLocator;
 import org.elasticsearch.features.FeatureService;
 import org.elasticsearch.index.Index;
+import org.elasticsearch.index.IndexMode;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.IndexingPressure;
 import org.elasticsearch.index.SliceIndexing;
@@ -60,8 +64,11 @@ import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
 
 import java.io.IOException;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -71,6 +78,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
+import java.util.stream.Collectors;
 
 import static org.elasticsearch.index.seqno.SequenceNumbers.UNASSIGNED_PRIMARY_TERM;
 import static org.elasticsearch.index.seqno.SequenceNumbers.UNASSIGNED_SEQ_NO;
@@ -91,6 +99,8 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
     private final OriginSettingClient rolloverClient;
     private final FailureStoreMetrics failureStoreMetrics;
     private final DataStreamFailureStoreSettings dataStreamFailureStoreSettings;
+    private final TimeSeriesEligibleWriteWindowLocator timeSeriesEligibleWriteWindowLocator;
+    private final DataStreamGlobalRetentionSettings dataStreamGlobalRetentionSettings;
 
     @Inject
     public TransportBulkAction(
@@ -106,7 +116,9 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
         ProjectResolver projectResolver,
         FailureStoreMetrics failureStoreMetrics,
         DataStreamFailureStoreSettings dataStreamFailureStoreSettings,
-        FeatureService featureService
+        FeatureService featureService,
+        TimeSeriesEligibleWriteWindowLocator timeSeriesEligibleWriteWindowLocator,
+        DataStreamGlobalRetentionSettings dataStreamGlobalRetentionSettings
     ) {
         this(
             threadPool,
@@ -122,7 +134,9 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
             threadPool::relativeTimeInNanos,
             failureStoreMetrics,
             dataStreamFailureStoreSettings,
-            featureService
+            featureService,
+            timeSeriesEligibleWriteWindowLocator,
+            dataStreamGlobalRetentionSettings
         );
     }
 
@@ -140,7 +154,9 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
         LongSupplier relativeTimeProvider,
         FailureStoreMetrics failureStoreMetrics,
         DataStreamFailureStoreSettings dataStreamFailureStoreSettings,
-        FeatureService featureService
+        FeatureService featureService,
+        TimeSeriesEligibleWriteWindowLocator timeSeriesEligibleWriteWindowLocator,
+        DataStreamGlobalRetentionSettings dataStreamGlobalRetentionSettings
     ) {
         this(
             TYPE,
@@ -158,7 +174,9 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
             relativeTimeProvider,
             failureStoreMetrics,
             dataStreamFailureStoreSettings,
-            featureService
+            featureService,
+            timeSeriesEligibleWriteWindowLocator,
+            dataStreamGlobalRetentionSettings
         );
     }
 
@@ -178,7 +196,9 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
         LongSupplier relativeTimeProvider,
         FailureStoreMetrics failureStoreMetrics,
         DataStreamFailureStoreSettings dataStreamFailureStoreSettings,
-        FeatureService featureService
+        FeatureService featureService,
+        TimeSeriesEligibleWriteWindowLocator timeSeriesEligibleWriteWindowLocator,
+        DataStreamGlobalRetentionSettings dataStreamGlobalRetentionSettings
     ) {
         super(
             bulkAction,
@@ -200,6 +220,8 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
         this.indexNameExpressionResolver = indexNameExpressionResolver;
         this.rolloverClient = new OriginSettingClient(client, LAZY_ROLLOVER_ORIGIN);
         this.failureStoreMetrics = failureStoreMetrics;
+        this.timeSeriesEligibleWriteWindowLocator = timeSeriesEligibleWriteWindowLocator;
+        this.dataStreamGlobalRetentionSettings = dataStreamGlobalRetentionSettings;
     }
 
     public static <Response extends ReplicationResponse & WriteResponse> ActionListener<BulkResponse> unwrappingSingleItemBulkResponse(
@@ -238,8 +260,16 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
         Map<String, CreateIndexRequest> indicesToAutoCreate = new HashMap<>();
         Set<String> dataStreamsToBeRolledOver = new HashSet<>();
         Set<String> failureStoresToBeRolledOver = new HashSet<>();
-        populateMissingTargets(bulkRequest, indicesToAutoCreate, dataStreamsToBeRolledOver, failureStoresToBeRolledOver);
-
+        Map<String, List<Instant>> tsdbPastTimestampsToCover = new HashMap<>();
+        long startTimeMillis = threadPool.absoluteTimeInMillis();
+        populateMissingTargets(
+            bulkRequest,
+            indicesToAutoCreate,
+            dataStreamsToBeRolledOver,
+            failureStoresToBeRolledOver,
+            tsdbPastTimestampsToCover,
+            startTimeMillis
+        );
         createMissingIndicesAndIndexData(
             task,
             bulkRequest,
@@ -248,7 +278,8 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
             indicesToAutoCreate,
             dataStreamsToBeRolledOver,
             failureStoresToBeRolledOver,
-            relativeStartTimeNanos
+            tsdbPastTimestampsToCover,
+            startTimeMillis
         );
     }
 
@@ -289,19 +320,26 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
      * @param dataStreamsToBeRolledOver a set of data stream names that were marked for lazy rollover and thus need to be rolled over now
      * @param failureStoresToBeRolledOver a set of data stream names whose failure store was marked for lazy rollover and thus need to be
      * rolled over now
+     * @param tsdbPastTimestampsToCover a map of tsdb data stream names and the timestamps that need to be covered by new
+     * backing indices
+     * @param startTimeMillis the start time of the request used to calculate the eligible window start
      */
     private void populateMissingTargets(
         BulkRequest bulkRequest,
         Map<String, CreateIndexRequest> indicesToAutoCreate,
         Set<String> dataStreamsToBeRolledOver,
-        Set<String> failureStoresToBeRolledOver
+        Set<String> failureStoresToBeRolledOver,
+        Map<String, List<Instant>> tsdbPastTimestampsToCover,
+        long startTimeMillis
     ) {
         populateMissingTargets(
             bulkRequest,
             projectResolver.getProjectState(clusterService.state()),
             indicesToAutoCreate,
             dataStreamsToBeRolledOver,
-            failureStoresToBeRolledOver
+            failureStoresToBeRolledOver,
+            tsdbPastTimestampsToCover,
+            startTimeMillis
         );
     }
 
@@ -310,7 +348,9 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
         ProjectState projectState,
         Map<String, CreateIndexRequest> indicesToAutoCreate,
         Set<String> dataStreamsToBeRolledOver,
-        Set<String> failureStoresToBeRolledOver
+        Set<String> failureStoresToBeRolledOver,
+        Map<String, List<Instant>> tsdbPastTimestampsToCover,
+        long startTimeMillis
     ) {
         // A map for memorizing which indices exist.
         Map<String, Boolean> indexExistence = new HashMap<>();
@@ -319,7 +359,7 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
             projectState.metadata()
         );
         Set<String> indicesThatRequireAlias = new HashSet<>();
-
+        Map<String, Long> tsdbWriteWindowStart = new HashMap<>();
         for (DocWriteRequest<?> request : bulkRequest.requests) {
             // Delete requests should not attempt to create the index (if the index does not exist), unless an external versioning is used.
             if (request.opType() == DocWriteRequest.OpType.DELETE
@@ -368,6 +408,75 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
                 } else if (writeToFailureStore && dataStream.getFailureComponent().isRolloverOnWrite()) {
                     failureStoresToBeRolledOver.add(request.index());
                 }
+                if (dataStream.isSystem() == false
+                    && IndexMode.TIME_SERIES == dataStream.getIndexMode()
+                    && DocWriteRequest.OpType.CREATE == request.opType()) {
+                    maybeQueueTimeSeriesCreateIndexOperation(
+                        projectState.metadata(),
+                        dataStream,
+                        request,
+                        tsdbWriteWindowStart,
+                        startTimeMillis,
+                        tsdbPastTimestampsToCover
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * Inspects if this time series data stream has a backing index to assign this document to, and if not, determines if it can create one.
+     *
+     * @param projectMetadata                       the project metadata used for looking up backing indices and examining data streams
+     * @param dataStream                            the data stream to inspect for start window
+     * @param request                               the write request to inspect for timestamp
+     * @param tsdbWriteWindowStart                      any previously located tsds start windows
+     * @param requestStartTimestamp                 the timestamp of the request, we use it to calculate the eligible write window
+     * @param tsdbPastTimestampsToCover tracks the timestamps that need to be covered by new indices per tsdb
+     */
+    private void maybeQueueTimeSeriesCreateIndexOperation(
+        ProjectMetadata projectMetadata,
+        DataStream dataStream,
+        DocWriteRequest<?> request,
+        Map<String, Long> tsdbWriteWindowStart,
+        long requestStartTimestamp,
+        Map<String, List<Instant>> tsdbPastTimestampsToCover
+    ) {
+        // We need to check if a tsds is able to accept a document based on its date.
+        Instant documentTimestamp;
+        try {
+            documentTimestamp = DataStream.getDocumentTimestamp(getIndexWriteRequest(request));
+        } catch (DataStream.TimestampError ignored) {
+            // just skip and let the error throw in BulkOperation
+            return;
+        }
+        long documentTimestampMillis = documentTimestamp.toEpochMilli();
+        var tsdsWriteIdx = dataStream.selectTimeSeriesWriteIndex(documentTimestamp, projectMetadata);
+        if (tsdsWriteIdx == null) {
+            // check if we're trying to write to the future
+            if (documentTimestampMillis > requestStartTimestamp) {
+                // just skip and let the error throw in BulkOperation
+                return;
+            }
+            // if there are no write indices then locate how far in the past we can create a tsds index
+            long windowStart = tsdbWriteWindowStart.computeIfAbsent(
+                dataStream.getName(),
+                ignored -> timeSeriesEligibleWriteWindowLocator.getEligibleWriteWindowStart(
+                    dataStream,
+                    projectMetadata,
+                    dataStreamGlobalRetentionSettings.get(),
+                    requestStartTimestamp
+                )
+            );
+
+            if (documentTimestampMillis > windowStart) {
+                tsdbPastTimestampsToCover.computeIfAbsent(dataStream.getName(), (ignored) -> new ArrayList<>()).add(documentTimestamp);
+            } else {
+                logger.trace(
+                    "Timestamp [{}] outside of eligible write window which starts at [{}], skipping",
+                    documentTimestamp,
+                    Instant.ofEpochMilli(windowStart)
+                );
             }
         }
     }
@@ -384,17 +493,22 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
         Map<String, CreateIndexRequest> indicesToAutoCreate,
         Set<String> dataStreamsToBeRolledOver,
         Set<String> failureStoresToBeRolledOver,
+        Map<String, List<Instant>> tsdbPastTimestampsToCover,
         long startTimeNanos
     ) {
         final AtomicArray<BulkItemResponse> responses = new AtomicArray<>(bulkRequest.requests.size());
         // Optimizing when there are no prerequisite actions
-        if (indicesToAutoCreate.isEmpty() && dataStreamsToBeRolledOver.isEmpty() && failureStoresToBeRolledOver.isEmpty()) {
+        if (indicesToAutoCreate.isEmpty()
+            && dataStreamsToBeRolledOver.isEmpty()
+            && failureStoresToBeRolledOver.isEmpty()
+            && tsdbPastTimestampsToCover.isEmpty()) {
             executeBulk(task, bulkRequest, startTimeNanos, listener, executor, responses);
             return;
         }
         Map<String, Exception> indicesExceptions = new ConcurrentHashMap<>();
         Map<String, Exception> dataStreamExceptions = new ConcurrentHashMap<>();
         Map<String, Exception> failureStoreExceptions = new ConcurrentHashMap<>();
+        Map<String, Map<Instant, Exception>> pastTsdbIndicesExceptions = new ConcurrentHashMap<>();
         Runnable executeBulkRunnable = () -> executor.execute(new ActionRunnable<>(listener) {
             @Override
             protected void doRun() {
@@ -402,6 +516,7 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
                     indicesExceptions,
                     dataStreamExceptions,
                     failureStoreExceptions,
+                    pastTsdbIndicesExceptions,
                     bulkRequest,
                     responses
                 );
@@ -412,6 +527,57 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
             createIndices(indicesToAutoCreate, refs, indicesExceptions);
             rollOverDataStreams(bulkRequest, dataStreamsToBeRolledOver, false, refs, dataStreamExceptions);
             rollOverDataStreams(bulkRequest, failureStoresToBeRolledOver, true, refs, failureStoreExceptions);
+            createPastTimeSeriesIndices(bulkRequest, tsdbPastTimestampsToCover, refs, pastTsdbIndicesExceptions);
+        }
+    }
+
+    private void createPastTimeSeriesIndices(
+        BulkRequest bulkRequest,
+        Map<String, List<Instant>> tsdbPastTimestampsToCover,
+        RefCountingRunnable refs,
+        Map<String, Map<Instant, Exception>> pastTsdbIndicesExceptions
+    ) {
+        for (Map.Entry<String, List<Instant>> entry : tsdbPastTimestampsToCover.entrySet()) {
+            String dataStreamName = entry.getKey();
+            createPastTimeSeriesIndex(
+                new PastTimeSeriesIndexCreationAction.Request(bulkRequest.timeout(), dataStreamName, entry.getValue()),
+                ActionListener.releaseAfter(new ActionListener<>() {
+                    @Override
+                    public void onResponse(PastTimeSeriesIndexCreationAction.Response response) {
+                        // We ignore the "acknowledged" status because the index has been created in the cluster state.
+                        // If shards are not allocated in time or if the timestamp was not within the eligible write window,
+                        // the bulk operation will re-throw the error. This will allow it to be correctly processed in
+                        // the failure store if applicable.
+                        logger.info(
+                            "Created past backing indices in tsdb [{}], covered timestamps [{}], rejected timestamps [{}]",
+                            dataStreamName,
+                            response.coveredTimestamps().size(),
+                            response.getRejectedTimestamps().size()
+                        );
+                        if (response.getRejectedTimestamps().isEmpty() == false && logger.isDebugEnabled()) {
+                            logger.trace(
+                                "Data stream's [{}] sampled rejection reasons {}",
+                                dataStreamName,
+                                response.getRejectedTimestamps()
+                                    .entrySet()
+                                    .stream()
+                                    .sorted(Map.Entry.comparingByKey())
+                                    .map(entry -> entry.getKey() + ": " + entry.getValue())
+                                    .collect(Collectors.joining(", ", "[", "]"))
+                            );
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        // Failures in the creation of the past indices should be recorded and used to fail the request with this error
+                        for (Instant timestamp : entry.getValue()) {
+                            pastTsdbIndicesExceptions.computeIfAbsent(dataStreamName, (ignored) -> new ConcurrentHashMap<>())
+                                .put(timestamp, e);
+                        }
+                    }
+                }, refs.acquire())
+            );
         }
     }
 
@@ -441,6 +607,14 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
     // Separate method to allow for overriding in tests.
     void createIndex(CreateIndexRequest createIndexRequest, ActionListener<CreateIndexResponse> listener) {
         client.execute(AutoCreateAction.INSTANCE, createIndexRequest, listener);
+    }
+
+    // Separate method to allow for overriding in tests.
+    void createPastTimeSeriesIndex(
+        PastTimeSeriesIndexCreationAction.Request request,
+        ActionListener<PastTimeSeriesIndexCreationAction.Response> listener
+    ) {
+        client.execute(PastTimeSeriesIndexCreationAction.INSTANCE, request, listener);
     }
 
     private void rollOverDataStreams(
@@ -490,6 +664,7 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
         Map<String, Exception> indicesExceptions,
         Map<String, Exception> dataStreamExceptions,
         Map<String, Exception> failureStoreExceptions,
+        Map<String, Map<Instant, Exception>> pastTsdbIndicesExceptions,
         BulkRequest bulkRequest,
         AtomicArray<BulkItemResponse> responses
     ) {
@@ -503,10 +678,16 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
             }
             var exception = indicesExceptions.get(request.index());
             if (exception == null) {
-                if (request instanceof IndexRequest indexRequest && indexRequest.isWriteToFailureStore()) {
-                    exception = failureStoreExceptions.get(request.index());
-                } else {
-                    exception = dataStreamExceptions.get(request.index());
+                if (request instanceof IndexRequest indexRequest) {
+                    if (indexRequest.isWriteToFailureStore()) {
+                        exception = failureStoreExceptions.get(request.index());
+                    } else if (dataStreamExceptions.containsKey(request.index())) {
+                        exception = dataStreamExceptions.get(request.index());
+                    } else if (pastTsdbIndicesExceptions.containsKey(request.index())) {
+                        assert indexRequest.getTimestampAsInstant() != null
+                            : "the timestamp of the request should have been cached during error detection";
+                        exception = pastTsdbIndicesExceptions.get(request.index()).get(indexRequest.getTimestampAsInstant());
+                    }
                 }
             }
             if (exception == null) {
@@ -609,7 +790,7 @@ public class TransportBulkAction extends TransportAbstractBulkAction {
             // The target may be auto-created; perform authoritative validation after concrete index resolution.
             return;
         }
-        boolean sliceEnabled = Optional.ofNullable(indexAbstraction)
+        boolean sliceEnabled = Optional.of(indexAbstraction)
             .map(IndexAbstraction::getWriteIndex)
             .map(indexMetadataProvider)
             .map(metadata -> IndexSettings.SLICE_ENABLED.get(metadata.getSettings()))
