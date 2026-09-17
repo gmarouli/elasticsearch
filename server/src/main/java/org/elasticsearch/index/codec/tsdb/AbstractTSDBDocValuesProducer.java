@@ -1646,7 +1646,7 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
         }
 
         @Nullable
-        abstract SortedOrdinalReader sortedOrdinalReader();
+        abstract RangeOrdinalReader sortedOrdinalReader();
     }
 
     abstract static class BaseSparseNumericValues extends NumericDocValues implements BlockLoader.OptionalColumnAtATimeReader {
@@ -2484,13 +2484,13 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
         }
     }
 
-    static final class SortedOrdinalReader {
+    static final class RangeOrdinalReader {
         final long maxOrd;
         final DirectMonotonicReader startDocs;
         private long currentIndex = -1;
         long rangeEndExclusive = -1;
 
-        SortedOrdinalReader(long maxOrd, DirectMonotonicReader startDocs) {
+        RangeOrdinalReader(long maxOrd, DirectMonotonicReader startDocs) {
             this.maxOrd = maxOrd;
             this.startDocs = startDocs;
         }
@@ -2569,7 +2569,7 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
                     }
 
                     @Override
-                    SortedOrdinalReader sortedOrdinalReader() {
+                    RangeOrdinalReader sortedOrdinalReader() {
                         return null;
                     }
                 };
@@ -2749,7 +2749,7 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
                 }
 
                 @Override
-                SortedOrdinalReader sortedOrdinalReader() {
+                RangeOrdinalReader sortedOrdinalReader() {
                     return null;
                 }
             };
@@ -2859,7 +2859,7 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
     }
 
     private NumericDocValues getRangeEncodedNumericDocValues(NumericEntry entry, long maxOrd) throws IOException {
-        final var ordinalsReader = new SortedOrdinalReader(
+        final var ordinalsReader = new RangeOrdinalReader(
             maxOrd,
             DirectMonotonicReader.getInstance(entry.sortedOrdinals, data.randomAccessSlice(entry.valuesOffset, entry.valuesLength), true)
         );
@@ -2876,7 +2876,7 @@ public abstract class AbstractTSDBDocValuesProducer extends DocValuesProducer {
                 }
 
                 @Override
-                SortedOrdinalReader sortedOrdinalReader() {
+                RangeOrdinalReader sortedOrdinalReader() {
                     return ordinalsReader;
                 }
             };
