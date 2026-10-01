@@ -836,6 +836,17 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
     }
 
     /**
+     * Retrieves the effective lifecycle meant for the backing indices.
+     */
+    @Nullable
+    public DataStreamLifecycle getEffectiveDataLifecycle(boolean enabledByDefaultForTimeSeries) {
+        if (lifecycle == null && enabledByDefaultForTimeSeries && indexMode == IndexMode.TIME_SERIES) {
+            return DataStreamLifecycle.DEFAULT_DATA_LIFECYCLE;
+        }
+        return lifecycle;
+    }
+
+    /**
      * Retrieves the effective lifecycle configuration for the failure store. This can be either the configuration provided
      * by a user or the default lifecycle if there are failure indices. NOTE: this does not take into consideration if the
      * failure store is enabled by a cluster setting, please use {@link DataStream#getFailuresLifecycle(Boolean)}.

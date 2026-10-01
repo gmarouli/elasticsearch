@@ -2244,6 +2244,32 @@ public class DataStreamTests extends AbstractXContentSerializingTestCase<DataStr
         assertThat(withFailuresLifecycle.getFailuresLifecycle(), equalTo(lifecycle));
     }
 
+    public void testEffectiveDataLifecycle() {
+        List<Index> indices = List.of(new Index(randomAlphaOfLength(10), randomUUID()));
+        IndexMode nonTimeSeriesIndexMode = randomFrom(
+            Arrays.stream(IndexMode.values()).filter(mode -> mode != IndexMode.TIME_SERIES).toArray(IndexMode[]::new)
+        );
+
+        // A time series data stream without a lifecycle gets the default lifecycle only when enabled
+        DataStream timeSeriesWithoutLifecycle = DataStream.builder("tsds", indices).setIndexMode(IndexMode.TIME_SERIES).build();
+        assertThat(timeSeriesWithoutLifecycle.getEffectiveDataLifecycle(true), equalTo(DataStreamLifecycle.DEFAULT_DATA_LIFECYCLE));
+        assertThat(timeSeriesWithoutLifecycle.getEffectiveDataLifecycle(false), nullValue());
+
+        // A non time series data stream without a lifecycle never gets the default lifecycle
+        DataStream nonTimeSeriesWithoutLifecycle = DataStream.builder("ds", indices)
+            .setIndexMode(randomBoolean() ? nonTimeSeriesIndexMode : null)
+            .build();
+        assertThat(nonTimeSeriesWithoutLifecycle.getEffectiveDataLifecycle(randomBoolean()), nullValue());
+
+        // A configured lifecycle is always returned as is
+        DataStreamLifecycle lifecycle = DataStreamLifecycleTests.randomDataLifecycle();
+        DataStream withLifecycle = DataStream.builder("ds-with-lifecycle", indices)
+            .setIndexMode(randomBoolean() ? IndexMode.TIME_SERIES : nonTimeSeriesIndexMode)
+            .setLifecycle(lifecycle)
+            .build();
+        assertThat(withLifecycle.getEffectiveDataLifecycle(randomBoolean()), equalTo(lifecycle));
+    }
+
     private DataStream createDataStream(
         Metadata.Builder builder,
         String dataStreamName,
