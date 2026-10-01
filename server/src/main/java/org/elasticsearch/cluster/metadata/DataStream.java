@@ -829,7 +829,9 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
     }
 
     /**
-     * Retrieves the lifecycle configuration meant for the backing indices.
+     * Retrieves the lifecycle configuration meant for the backing indices as the user configured it.
+     * This may differ from the effective lifecycle that can be retrieved by
+     * {@link #getEffectiveDataLifecycle(boolean)}
      */
     @Nullable
     public DataStreamLifecycle getDataLifecycle() {
@@ -837,11 +839,13 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
     }
 
     /**
-     * Retrieves the effective lifecycle meant for the backing indices.
+     * Retrieves the <b>effective</b> lifecycle configuration meant for the backing indices.
+     * @param enableByDefault enables the lifecycle when none is configured,
+     *                        currently only applies to time series index mode.
      */
     @Nullable
-    public DataStreamLifecycle getEffectiveDataLifecycle(boolean enabledByDefaultForTimeSeries) {
-        if (lifecycle == null && enabledByDefaultForTimeSeries && indexMode == IndexMode.TIME_SERIES) {
+    public DataStreamLifecycle getEffectiveDataLifecycle(boolean enableByDefault) {
+        if (lifecycle == null && enableByDefault && indexMode == IndexMode.TIME_SERIES) {
             return DataStreamLifecycle.DEFAULT_DATA_LIFECYCLE;
         }
         return lifecycle;
@@ -880,8 +884,16 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
      */
     @Nullable
     public DataStreamLifecycle getDataLifecycleForIndex(Index index) {
+        return getDataLifecycleForIndex(index, false);
+    }
+
+    /**
+     * Retrieves the correct lifecycle for the provided index. Returns null if the index does not belong to this data stream
+     */
+    @Nullable
+    public DataStreamLifecycle getDataLifecycleForIndex(Index index, boolean enableByDefault) {
         if (backingIndices.containsIndex(index.getName())) {
-            return getDataLifecycle();
+            return getEffectiveDataLifecycle(enableByDefault);
         }
         if (failureIndices.containsIndex(index.getName())) {
             return getFailuresLifecycle();
