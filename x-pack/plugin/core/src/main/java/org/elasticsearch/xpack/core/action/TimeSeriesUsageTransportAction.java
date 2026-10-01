@@ -101,7 +101,7 @@ public class TimeSeriesUsageTransportAction extends XPackUsageFeatureTransportAc
                     continue;
                 }
                 tsIndexCount++;
-                DataStream.LifecycleManagedBy managedBy = DataStream.lifecycleManagedBy(
+                DataStream.LifecycleManagedBy managedBy = DataStream.managedBy(
                     indexMetadata.getLifecyclePolicyName(),
                     dataLifecycle,
                     indexMetadata.getSettings(),

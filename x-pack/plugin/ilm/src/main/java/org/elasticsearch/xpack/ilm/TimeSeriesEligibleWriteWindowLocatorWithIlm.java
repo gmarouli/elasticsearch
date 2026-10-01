@@ -49,7 +49,7 @@ public class TimeSeriesEligibleWriteWindowLocatorWithIlm extends TimeSeriesEligi
             return null;
         }
 
-        return DataStream.lifecycleManagedBy(
+        return DataStream.managedBy(
             policyName,
             dataStream.getDataLifecycle(),
             settings,

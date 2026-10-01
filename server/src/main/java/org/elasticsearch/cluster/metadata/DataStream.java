@@ -1464,7 +1464,7 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
         Settings settings = indexMetadata.getSettings();
         IndexMode indexMode = indexMetadata.getIndexMode();
         var lifecycle = getDataLifecycleForIndex(indexMetadata.getIndex());
-        return lifecycleManagedBy(indexMetadata.getLifecyclePolicyName(), lifecycle, settings, indexMode) == LifecycleManagedBy.DLM;
+        return managedBy(indexMetadata.getLifecyclePolicyName(), lifecycle, settings, indexMode) == LifecycleManagedBy.DLM;
     }
 
     /**
@@ -1475,7 +1475,7 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
      * @param indexMode the index mode of the resource, because LOOKUP resources are unmanaged by definition
      * @return the enum denoting which feature is managing this resource.
      */
-    public static LifecycleManagedBy lifecycleManagedBy(
+    public static LifecycleManagedBy managedBy(
         String ilmPolicy,
         DataStreamLifecycle dataStreamLifecycle,
         BooleanSupplier preferIlmSupplier,
@@ -1506,13 +1506,13 @@ public final class DataStream implements SimpleDiffable<DataStream>, ToXContentO
      * @param indexMode the index mode of the resource, because LOOKUP resources are unmanaged by definition
      * @return the enum denoting which feature is managing this resource.
      */
-    public static LifecycleManagedBy lifecycleManagedBy(
+    public static LifecycleManagedBy managedBy(
         String ilmPolicy,
         DataStreamLifecycle dataStreamLifecycle,
         Settings settings,
         IndexMode indexMode
     ) {
-        return lifecycleManagedBy(ilmPolicy, dataStreamLifecycle, () -> PREFER_ILM_SETTING.get(settings), indexMode);
+        return managedBy(ilmPolicy, dataStreamLifecycle, () -> PREFER_ILM_SETTING.get(settings), indexMode);
     }
 
     /**

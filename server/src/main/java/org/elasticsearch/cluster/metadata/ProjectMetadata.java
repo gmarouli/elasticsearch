@@ -1173,7 +1173,7 @@ public class ProjectMetadata implements Iterable<IndexMetadata>, Diffable<Projec
             return true;
         }
         DataStreamLifecycle lifecycle = parentDataStream.getDataLifecycleForIndex(indexMetadata.getIndex());
-        return DataStream.lifecycleManagedBy(
+        return DataStream.managedBy(
             indexMetadata.getLifecyclePolicyName(),
             lifecycle,
             indexMetadata.getSettings(),

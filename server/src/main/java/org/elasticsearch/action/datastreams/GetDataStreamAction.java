@@ -495,7 +495,7 @@ public class GetDataStreamAction extends ActionType<GetDataStreamAction.Response
              */
             public ManagedBy getNextGenerationManagedBy() {
                 return ManagedBy.fromLifecycleManagedBy(
-                    DataStream.lifecycleManagedBy(
+                    DataStream.managedBy(
                         ilmPolicyName,
                         dataStream.getDataLifecycle(),
                         () -> templatePreferIlmValue,

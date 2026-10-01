@@ -104,7 +104,7 @@ public class TimeSeriesEligibleWriteWindowLocatorWithIlmTests extends ESTestCase
 
     /**
      * A disabled data stream lifecycle does not manage the data stream, so ILM is the only effective feature
-     * regardless of the value of prefer_ilm. This must be consistent with {@link DataStream#lifecycleManagedBy}.
+     * regardless of the value of prefer_ilm. This must be consistent with {@link DataStream#managedBy}.
      */
     public void testGetEffectiveIlmPolicyWithDisabledDlm() {
         String name = "metrics-test";

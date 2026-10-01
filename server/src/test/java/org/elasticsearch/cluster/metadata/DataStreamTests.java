@@ -2231,28 +2231,28 @@ public class DataStreamTests extends AbstractXContentSerializingTestCase<DataStr
         IndexMode mode = randomValueOtherThan(IndexMode.LOOKUP, () -> randomFrom(IndexMode.values()));
 
         // both configured, prefer_ilm decides (it defaults to true)
-        assertThat(DataStream.lifecycleManagedBy("policy", enabled, preferIlm, mode), is(DataStream.LifecycleManagedBy.ILM));
-        assertThat(DataStream.lifecycleManagedBy("policy", enabled, Settings.EMPTY, mode), is(DataStream.LifecycleManagedBy.ILM));
-        assertThat(DataStream.lifecycleManagedBy("policy", enabled, preferDlm, mode), is(DataStream.LifecycleManagedBy.DLM));
+        assertThat(DataStream.managedBy("policy", enabled, preferIlm, mode), is(DataStream.LifecycleManagedBy.ILM));
+        assertThat(DataStream.managedBy("policy", enabled, Settings.EMPTY, mode), is(DataStream.LifecycleManagedBy.ILM));
+        assertThat(DataStream.managedBy("policy", enabled, preferDlm, mode), is(DataStream.LifecycleManagedBy.DLM));
 
         // a disabled data stream lifecycle never manages the resource, so prefer_ilm is irrelevant
         for (Settings settings : List.of(Settings.EMPTY, preferIlm, preferDlm)) {
-            assertThat(DataStream.lifecycleManagedBy("policy", disabled, settings, mode), is(DataStream.LifecycleManagedBy.ILM));
-            assertThat(DataStream.lifecycleManagedBy(null, disabled, settings, mode), is(DataStream.LifecycleManagedBy.UNMANAGED));
+            assertThat(DataStream.managedBy("policy", disabled, settings, mode), is(DataStream.LifecycleManagedBy.ILM));
+            assertThat(DataStream.managedBy(null, disabled, settings, mode), is(DataStream.LifecycleManagedBy.UNMANAGED));
         }
 
         // only one feature configured, prefer_ilm is irrelevant
         for (Settings settings : List.of(Settings.EMPTY, preferIlm, preferDlm)) {
-            assertThat(DataStream.lifecycleManagedBy("policy", null, settings, mode), is(DataStream.LifecycleManagedBy.ILM));
-            assertThat(DataStream.lifecycleManagedBy(null, enabled, settings, mode), is(DataStream.LifecycleManagedBy.DLM));
-            assertThat(DataStream.lifecycleManagedBy(null, null, settings, mode), is(DataStream.LifecycleManagedBy.UNMANAGED));
+            assertThat(DataStream.managedBy("policy", null, settings, mode), is(DataStream.LifecycleManagedBy.ILM));
+            assertThat(DataStream.managedBy(null, enabled, settings, mode), is(DataStream.LifecycleManagedBy.DLM));
+            assertThat(DataStream.managedBy(null, null, settings, mode), is(DataStream.LifecycleManagedBy.UNMANAGED));
         }
 
         // lookup resources are unmanaged by definition
         for (DataStreamLifecycle lifecycle : new DataStreamLifecycle[] { enabled, disabled, null }) {
             for (String policy : new String[] { "policy", null }) {
                 assertThat(
-                    DataStream.lifecycleManagedBy(policy, lifecycle, preferDlm, IndexMode.LOOKUP),
+                    DataStream.managedBy(policy, lifecycle, preferDlm, IndexMode.LOOKUP),
                     is(DataStream.LifecycleManagedBy.UNMANAGED)
                 );
             }
