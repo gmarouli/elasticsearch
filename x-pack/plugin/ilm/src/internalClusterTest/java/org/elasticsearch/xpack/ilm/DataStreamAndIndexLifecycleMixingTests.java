@@ -847,8 +847,8 @@ public class DataStreamAndIndexLifecycleMixingTests extends ESIntegTestCase {
             assertThat(dataStreamInfo.getIndexSettingsValues().get(writeIndexSettings).ilmPolicyName(), is(policy));
             assertThat(dataStreamInfo.getIndexSettingsValues().get(writeIndexSettings).managedBy(), is(ManagedBy.LIFECYCLE));
 
-            // with the current configuratino, the next generation index will be managed by DSL
-            assertThat(dataStreamInfo.getNextGenerationManagedBy(), is(ManagedBy.LIFECYCLE));
+            // with the current configuration, the next generation index will be managed by DSL
+            assertThat(dataStreamInfo.getNextGenerationManagedBy(randomBoolean()), is(ManagedBy.LIFECYCLE));
         });
 
         // remove ILM policy and prefer_ilm from template
@@ -862,7 +862,7 @@ public class DataStreamAndIndexLifecycleMixingTests extends ESIntegTestCase {
         assertThat(getDataStreamResponse.getDataStreams().size(), equalTo(1));
         GetDataStreamAction.Response.DataStreamInfo dataStreamInfo = getDataStreamResponse.getDataStreams().get(0);
         // since the ILM related settings are gone from the index template, this data stream should now be managed by lifecycle
-        assertThat(dataStreamInfo.getNextGenerationManagedBy(), is(ManagedBy.LIFECYCLE));
+        assertThat(dataStreamInfo.getNextGenerationManagedBy(randomBoolean()), is(ManagedBy.LIFECYCLE));
 
         // disable data stream lifecycle on the data stream. the future generations will be UNMANAGED
         client().execute(
@@ -882,7 +882,7 @@ public class DataStreamAndIndexLifecycleMixingTests extends ESIntegTestCase {
         dataStreamInfo = getDataStreamResponse.getDataStreams().get(0);
         // since the ILM related settings are gone from the index template and the lifeclcye is disabled, this data stream should now be
         // managed unmanaged
-        assertThat(dataStreamInfo.getNextGenerationManagedBy(), is(ManagedBy.UNMANAGED));
+        assertThat(dataStreamInfo.getNextGenerationManagedBy(randomBoolean()), is(ManagedBy.UNMANAGED));
     }
 
     static void indexDocs(String dataStream, int numDocs) {

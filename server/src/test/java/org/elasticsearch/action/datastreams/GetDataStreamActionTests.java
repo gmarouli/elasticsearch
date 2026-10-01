@@ -10,6 +10,7 @@
 package org.elasticsearch.action.datastreams;
 
 import org.elasticsearch.action.admin.indices.rollover.RolloverConfiguration;
+import org.elasticsearch.action.datastreams.GetDataStreamAction.Response.ManagedBy;
 import org.elasticsearch.cluster.health.ClusterHealthStatus;
 import org.elasticsearch.cluster.metadata.DataStream;
 import org.elasticsearch.cluster.metadata.DataStreamGlobalRetention;
@@ -18,8 +19,10 @@ import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.compress.CompressedXContent;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.xcontent.XContentHelper;
+import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.Index;
+import org.elasticsearch.index.IndexMode;
 import org.elasticsearch.test.ESTestCase;
 import org.elasticsearch.xcontent.ToXContent;
 import org.elasticsearch.xcontent.XContentBuilder;
@@ -32,6 +35,7 @@ import java.util.Map;
 import static org.elasticsearch.cluster.metadata.ComponentTemplateTests.randomMappings;
 import static org.elasticsearch.cluster.metadata.ComponentTemplateTests.randomSettings;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.is;
 
 public class GetDataStreamActionTests extends ESTestCase {
 
@@ -71,6 +75,81 @@ public class GetDataStreamActionTests extends ESTestCase {
         }
     }
 
+    public void testNextGenerationManagedByTimeSeriesWithoutLifecycle() throws IOException {
+        {
+            // no ILM policy, the default lifecycle is the only lifecycle in effect
+            var dataStreamInfo = newDataStreamInfo(IndexMode.TIME_SERIES, null, null, randomBoolean());
+            assertThat(dataStreamInfo.getNextGenerationManagedBy(false), is(ManagedBy.UNMANAGED));
+            assertThat(dataStreamInfo.getNextGenerationManagedBy(true), is(ManagedBy.LIFECYCLE));
+            assertNextGenerationManagedByInXContent(dataStreamInfo, false, ManagedBy.UNMANAGED);
+            assertNextGenerationManagedByInXContent(dataStreamInfo, true, ManagedBy.LIFECYCLE);
+        }
+        {
+            // ILM policy configured and ILM is preferred, ILM wins regardless of the default lifecycle
+            var dataStreamInfo = newDataStreamInfo(IndexMode.TIME_SERIES, null, "my-policy", true);
+            assertThat(dataStreamInfo.getNextGenerationManagedBy(randomBoolean()), is(ManagedBy.ILM));
+        }
+        {
+            // ILM policy configured and ILM is not preferred, the default lifecycle takes over when enabled
+            var dataStreamInfo = newDataStreamInfo(IndexMode.TIME_SERIES, null, "my-policy", false);
+            assertThat(dataStreamInfo.getNextGenerationManagedBy(false), is(ManagedBy.ILM));
+            assertThat(dataStreamInfo.getNextGenerationManagedBy(true), is(ManagedBy.LIFECYCLE));
+            assertNextGenerationManagedByInXContent(dataStreamInfo, false, ManagedBy.ILM);
+            assertNextGenerationManagedByInXContent(dataStreamInfo, true, ManagedBy.LIFECYCLE);
+        }
+    }
+
+    public void testNextGenerationManagedByIgnoresDefaultLifecycle() {
+        {
+            // time series data stream with a disabled lifecycle
+            DataStreamLifecycle disabled = DataStreamLifecycle.dataLifecycleBuilder().enabled(false).build();
+            var dataStreamInfo = newDataStreamInfo(IndexMode.TIME_SERIES, disabled, null, randomBoolean());
+            assertThat(dataStreamInfo.getNextGenerationManagedBy(randomBoolean()), is(ManagedBy.UNMANAGED));
+        }
+        {
+            // non time series data stream without a lifecycle
+            IndexMode indexMode = randomBoolean() ? null : randomFrom(IndexMode.STANDARD, IndexMode.LOGSDB);
+            var dataStreamInfo = newDataStreamInfo(indexMode, null, null, randomBoolean());
+            assertThat(dataStreamInfo.getNextGenerationManagedBy(randomBoolean()), is(ManagedBy.UNMANAGED));
+        }
+    }
+
+    private static void assertNextGenerationManagedByInXContent(
+        GetDataStreamAction.Response.DataStreamInfo dataStreamInfo,
+        boolean defaultLifecycleForTimeSeriesEnabled,
+        ManagedBy expected
+    ) throws IOException {
+        try (XContentBuilder builder = XContentBuilder.builder(XContentType.JSON.xContent())) {
+            dataStreamInfo.toXContent(builder, ToXContent.EMPTY_PARAMS, null, null, null, defaultLifecycleForTimeSeriesEnabled);
+            Map<String, Object> resultMap = XContentHelper.convertToMap(XContentType.JSON.xContent(), Strings.toString(builder), false);
+            assertThat(resultMap.get("next_generation_managed_by"), equalTo(expected.displayValue));
+        }
+    }
+
+    private static GetDataStreamAction.Response.DataStreamInfo newDataStreamInfo(
+        @Nullable IndexMode indexMode,
+        @Nullable DataStreamLifecycle lifecycle,
+        @Nullable String ilmPolicyName,
+        boolean templatePreferIlmValue
+    ) {
+        DataStream dataStream = DataStream.builder(randomAlphaOfLength(10), List.of(new Index(randomAlphaOfLength(10), randomUUID())))
+            .setIndexMode(indexMode)
+            .setLifecycle(lifecycle)
+            .build();
+        return new GetDataStreamAction.Response.DataStreamInfo(
+            dataStream,
+            false,
+            ClusterHealthStatus.GREEN,
+            null,
+            ilmPolicyName,
+            null,
+            Map.of(),
+            templatePreferIlmValue,
+            null,
+            indexMode == null ? null : indexMode.getName()
+        );
+    }
+
     /*
      * Calls toXContent on the given dataStreamInfo, and converts the response to a Map
      */
@@ -83,7 +162,7 @@ public class GetDataStreamActionTests extends ESTestCase {
             ToXContent.Params params = new ToXContent.MapParams(DataStreamLifecycle.INCLUDE_EFFECTIVE_RETENTION_PARAMS);
             RolloverConfiguration rolloverConfiguration = null;
             DataStreamGlobalRetention globalRetention = new DataStreamGlobalRetention(globalDefaultRetention, globalMaxRetention);
-            dataStreamInfo.toXContent(builder, params, rolloverConfiguration, globalRetention, globalRetention);
+            dataStreamInfo.toXContent(builder, params, rolloverConfiguration, globalRetention, globalRetention, randomBoolean());
             String serialized = Strings.toString(builder);
             return XContentHelper.convertToMap(XContentType.JSON.xContent(), serialized, randomBoolean());
         }

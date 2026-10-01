@@ -198,7 +198,7 @@ public class GetDataStreamAction extends ActionType<GetDataStreamAction.Response
                 this.displayValue = displayValue;
             }
 
-            static ManagedBy fromLifecycleManagedBy(DataStream.LifecycleManagedBy lifecycleManagedBy) {
+            public static ManagedBy fromLifecycleManagedBy(DataStream.LifecycleManagedBy lifecycleManagedBy) {
                 return switch (lifecycleManagedBy) {
                     case ILM -> ILM;
                     case DLM -> LIFECYCLE;
@@ -352,7 +352,7 @@ public class GetDataStreamAction extends ActionType<GetDataStreamAction.Response
 
             @Override
             public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-                return toXContent(builder, params, null, null, null);
+                return toXContent(builder, params, null, null, null, false);
             }
 
             /**
@@ -364,7 +364,8 @@ public class GetDataStreamAction extends ActionType<GetDataStreamAction.Response
                 Params params,
                 @Nullable RolloverConfiguration rolloverConfiguration,
                 @Nullable DataStreamGlobalRetention dataGlobalRetention,
-                @Nullable DataStreamGlobalRetention failureGlobalRetention
+                @Nullable DataStreamGlobalRetention failureGlobalRetention,
+                boolean defaultLifecycleForTimeSeriesEnabled
             ) throws IOException {
                 builder.startObject();
                 builder.field(DataStream.NAME_FIELD.getPreferredName(), dataStream.getName());
@@ -390,7 +391,10 @@ public class GetDataStreamAction extends ActionType<GetDataStreamAction.Response
                 if (ilmPolicyName != null) {
                     builder.field(ILM_POLICY_FIELD.getPreferredName(), ilmPolicyName);
                 }
-                builder.field(NEXT_GENERATION_INDEX_MANAGED_BY.getPreferredName(), getNextGenerationManagedBy().displayValue);
+                builder.field(
+                    NEXT_GENERATION_INDEX_MANAGED_BY.getPreferredName(),
+                    getNextGenerationManagedBy(defaultLifecycleForTimeSeriesEnabled).displayValue
+                );
                 builder.field(PREFER_ILM.getPreferredName(), templatePreferIlmValue);
                 builder.field(HIDDEN_FIELD.getPreferredName(), dataStream.isHidden());
                 builder.field(SYSTEM_FIELD.getPreferredName(), dataStream.isSystem());
@@ -493,11 +497,11 @@ public class GetDataStreamAction extends ActionType<GetDataStreamAction.Response
             /**
              * Computes and returns which system will manage the next generation for this data stream.
              */
-            public ManagedBy getNextGenerationManagedBy() {
+            public ManagedBy getNextGenerationManagedBy(boolean defaultLifecycleForTimeSeriesEnabled) {
                 return ManagedBy.fromLifecycleManagedBy(
                     DataStream.managedBy(
                         ilmPolicyName,
-                        dataStream.getDataLifecycle(),
+                        dataStream.getEffectiveDataLifecycle(defaultLifecycleForTimeSeriesEnabled),
                         () -> templatePreferIlmValue,
                         dataStream.getIndexMode()
                     )
@@ -605,21 +609,24 @@ public class GetDataStreamAction extends ActionType<GetDataStreamAction.Response
         private final DataStreamGlobalRetention dataGlobalRetention;
         @Nullable
         private final DataStreamGlobalRetention failuresGlobalRetention;
+        private boolean defaultLifecycleForTimeSeriesEnabled;
 
         public Response(List<DataStreamInfo> dataStreams) {
-            this(dataStreams, null, null, null);
+            this(dataStreams, null, null, null, false);
         }
 
         public Response(
             List<DataStreamInfo> dataStreams,
             @Nullable RolloverConfiguration rolloverConfiguration,
             @Nullable DataStreamGlobalRetention dataGlobalRetention,
-            @Nullable DataStreamGlobalRetention failuresGlobalRetention
+            @Nullable DataStreamGlobalRetention failuresGlobalRetention,
+            boolean defaultLifecycleForTimeSeriesEnabled
         ) {
             this.dataStreams = dataStreams;
             this.rolloverConfiguration = rolloverConfiguration;
             this.dataGlobalRetention = dataGlobalRetention;
             this.failuresGlobalRetention = failuresGlobalRetention;
+            this.defaultLifecycleForTimeSeriesEnabled = defaultLifecycleForTimeSeriesEnabled;
         }
 
         public List<DataStreamInfo> getDataStreams() {
@@ -670,7 +677,8 @@ public class GetDataStreamAction extends ActionType<GetDataStreamAction.Response
                     DataStreamLifecycle.addEffectiveRetentionParams(params),
                     rolloverConfiguration,
                     dataGlobalRetention,
-                    failuresGlobalRetention
+                    failuresGlobalRetention,
+                    defaultLifecycleForTimeSeriesEnabled
                 );
             }
             builder.endArray();

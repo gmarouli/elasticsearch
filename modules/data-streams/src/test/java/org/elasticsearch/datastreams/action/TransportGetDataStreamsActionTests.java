@@ -9,6 +9,7 @@
 package org.elasticsearch.datastreams.action;
 
 import org.elasticsearch.action.datastreams.GetDataStreamAction;
+import org.elasticsearch.action.datastreams.GetDataStreamAction.Response.ManagedBy;
 import org.elasticsearch.cluster.ClusterName;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.ComponentTemplate;
@@ -20,12 +21,12 @@ import org.elasticsearch.cluster.metadata.DataStreamLifecycleSettings;
 import org.elasticsearch.cluster.metadata.DataStreamTestHelper;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
-import org.elasticsearch.cluster.metadata.MetadataDataStreamsService;
 import org.elasticsearch.cluster.metadata.ProjectMetadata;
 import org.elasticsearch.cluster.metadata.Template;
-import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.settings.ClusterSettings;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.xcontent.XContentHelper;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.index.Index;
@@ -33,15 +34,12 @@ import org.elasticsearch.index.IndexMode;
 import org.elasticsearch.index.IndexNotFoundException;
 import org.elasticsearch.index.IndexSettingProviders;
 import org.elasticsearch.index.IndexSettings;
-import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.indices.SystemIndices;
 import org.elasticsearch.indices.TestIndexNameExpressionResolver;
-import org.elasticsearch.test.ClusterServiceUtils;
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.threadpool.TestThreadPool;
-import org.elasticsearch.threadpool.ThreadPool;
-import org.junit.After;
-import org.junit.Before;
+import org.elasticsearch.xcontent.ToXContent;
+import org.elasticsearch.xcontent.XContentBuilder;
+import org.elasticsearch.xcontent.XContentType;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -65,6 +63,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class TransportGetDataStreamsActionTests extends ESTestCase {
 
@@ -76,28 +75,6 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
     private final DataStreamFailureStoreSettings emptyDataStreamFailureStoreSettings = DataStreamFailureStoreSettings.create(
         ClusterSettings.createBuiltInClusterSettings()
     );
-    private ThreadPool testThreadPool;
-    private MetadataDataStreamsService metadataDataStreamsService;
-
-    @Before
-    public void setup() throws IOException {
-        testThreadPool = new TestThreadPool(getTestName());
-        ClusterService clusterService = ClusterServiceUtils.createClusterService(testThreadPool);
-        IndicesService indicesService = mock(IndicesService.class);
-        metadataDataStreamsService = new MetadataDataStreamsService(
-            clusterService,
-            indicesService,
-            DataStreamLifecycleSettings.create(ClusterSettings.createBuiltInClusterSettings()),
-            IndexSettingProviders.EMPTY
-        );
-    }
-
-    @After
-    public void shutdown() throws Exception {
-        if (testThreadPool != null) {
-            testThreadPool.shutdown();
-        }
-    }
 
     public void testGetDataStream() {
         final String dataStreamName = "my-data-stream";
@@ -218,8 +195,7 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
             dataStreamLifecycleSettings,
             emptyDataStreamFailureStoreSettings,
             new IndexSettingProviders(Set.of()),
-            null,
-            metadataDataStreamsService
+            null
         );
         assertThat(
             response.getDataStreams(),
@@ -252,8 +228,7 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
             dataStreamLifecycleSettings,
             emptyDataStreamFailureStoreSettings,
             new IndexSettingProviders(Set.of()),
-            null,
-            metadataDataStreamsService
+            null
         );
         assertThat(
             response.getDataStreams(),
@@ -307,8 +282,7 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
             dataStreamLifecycleSettings,
             emptyDataStreamFailureStoreSettings,
             new IndexSettingProviders(Set.of()),
-            null,
-            metadataDataStreamsService
+            null
         );
         assertThat(
             response.getDataStreams(),
@@ -348,8 +322,7 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
             dataStreamLifecycleSettings,
             emptyDataStreamFailureStoreSettings,
             new IndexSettingProviders(Set.of()),
-            null,
-            metadataDataStreamsService
+            null
         );
 
         var name1 = getDefaultBackingIndexName("ds-1", 1, instant.toEpochMilli());
@@ -385,8 +358,7 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
             dataStreamLifecycleSettings,
             emptyDataStreamFailureStoreSettings,
             new IndexSettingProviders(Set.of()),
-            null,
-            metadataDataStreamsService
+            null
         );
         assertThat(response.getDataGlobalRetention(), nullValue());
         DataStreamGlobalRetention dataGlobalRetention = new DataStreamGlobalRetention(
@@ -413,8 +385,7 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
             withGlobalRetentionSettings,
             emptyDataStreamFailureStoreSettings,
             new IndexSettingProviders(Set.of()),
-            null,
-            metadataDataStreamsService
+            null
         );
         assertThat(response.getDataGlobalRetention(), equalTo(dataGlobalRetention));
         // We used the default failures retention here which is greater than the max
@@ -442,8 +413,7 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
             dataStreamLifecycleSettings,
             emptyDataStreamFailureStoreSettings,
             new IndexSettingProviders(Set.of()),
-            null,
-            metadataDataStreamsService
+            null
         );
         assertThat(response.getDataStreams(), hasSize(1));
         assertThat(response.getDataStreams().getFirst().isFailureStoreEffectivelyEnabled(), is(false));
@@ -470,8 +440,7 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
             dataStreamLifecycleSettings,
             emptyDataStreamFailureStoreSettings,
             new IndexSettingProviders(Set.of()),
-            null,
-            metadataDataStreamsService
+            null
         );
         assertThat(response.getDataStreams(), hasSize(1));
         assertThat(response.getDataStreams().getFirst().isFailureStoreEffectivelyEnabled(), is(true));
@@ -504,8 +473,7 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
                 )
             ),
             new IndexSettingProviders(Set.of()),
-            null,
-            metadataDataStreamsService
+            null
         );
         assertThat(response.getDataStreams(), hasSize(1));
         assertThat(response.getDataStreams().getFirst().isFailureStoreEffectivelyEnabled(), is(true));
@@ -532,8 +500,7 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
             dataStreamLifecycleSettings,
             emptyDataStreamFailureStoreSettings,
             IndexSettingProviders.of((additionalSettings) -> additionalSettings.put("index.mode", IndexMode.LOOKUP)),
-            null,
-            metadataDataStreamsService
+            null
         );
         assertThat(response.getDataStreams().getFirst().getIndexModeName(), equalTo("lookup"));
         assertThat(
@@ -547,6 +514,86 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
                 .orElse("bad"),
             equalTo("standard")
         );
+    }
+
+    /**
+     * Verifies that the default lifecycle for time series flag from {@link DataStreamLifecycleSettings} is taken into account when
+     * resolving which lifecycle feature manages each backing index and the next generation of a time series data stream.
+     */
+    public void testManagedByTimeSeriesDataStreamWithDefaultLifecycle() throws IOException {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        String dataStreamName = "metrics-prod";
+        var projectBuilder = ProjectMetadata.builder(randomProjectIdOrDefault());
+        DataStreamTestHelper.getClusterStateWithDataStream(
+            projectBuilder,
+            dataStreamName,
+            List.of(
+                new Tuple<>(now.minus(4, ChronoUnit.HOURS), now.minus(2, ChronoUnit.HOURS)),
+                new Tuple<>(now.minus(2, ChronoUnit.HOURS), now.plus(2, ChronoUnit.HOURS))
+            )
+        );
+        // The first backing index has an ILM policy but does not prefer ILM, the second one has no ILM policy
+        Index ilmIndex = projectBuilder.dataStream(dataStreamName).getIndices().getFirst();
+        Index noPolicyIndex = projectBuilder.dataStream(dataStreamName).getIndices().getLast();
+        IndexMetadata ilmIndexMetadata = projectBuilder.getSafe(ilmIndex);
+        projectBuilder.put(
+            IndexMetadata.builder(ilmIndexMetadata)
+                .settings(
+                    Settings.builder()
+                        .put(ilmIndexMetadata.getSettings())
+                        .put(IndexMetadata.LIFECYCLE_NAME, "my-policy")
+                        .put(IndexSettings.PREFER_ILM, false)
+                )
+                .settingsVersion(ilmIndexMetadata.getSettingsVersion() + 1)
+                .build(),
+            true
+        );
+        ProjectMetadata project = projectBuilder.build();
+        var req = new GetDataStreamAction.Request(TEST_REQUEST_TIMEOUT, new String[] { dataStreamName });
+        {
+            var response = TransportGetDataStreamsAction.innerOperation(
+                projectStateFromProject(project),
+                req,
+                resolver,
+                systemIndices,
+                ClusterSettings.createBuiltInClusterSettings(),
+                createDataStreamLifecycleSettings(false),
+                emptyDataStreamFailureStoreSettings,
+                new IndexSettingProviders(Set.of()),
+                null
+            );
+            var indexSettingsValues = response.getDataStreams().getFirst().getIndexSettingsValues();
+            assertThat(indexSettingsValues.get(ilmIndex).managedBy(), is(ManagedBy.ILM));
+            assertThat(indexSettingsValues.get(noPolicyIndex).managedBy(), is(ManagedBy.UNMANAGED));
+            assertThat(getNextGenerationManagedBy(response), equalTo(ManagedBy.UNMANAGED.displayValue));
+        }
+        {
+            var response = TransportGetDataStreamsAction.innerOperation(
+                projectStateFromProject(project),
+                req,
+                resolver,
+                systemIndices,
+                ClusterSettings.createBuiltInClusterSettings(),
+                createDataStreamLifecycleSettings(true),
+                emptyDataStreamFailureStoreSettings,
+                new IndexSettingProviders(Set.of()),
+                null
+            );
+            var indexSettingsValues = response.getDataStreams().getFirst().getIndexSettingsValues();
+            assertThat(indexSettingsValues.get(ilmIndex).managedBy(), is(ManagedBy.LIFECYCLE));
+            assertThat(indexSettingsValues.get(noPolicyIndex).managedBy(), is(ManagedBy.LIFECYCLE));
+            assertThat(getNextGenerationManagedBy(response), equalTo(ManagedBy.LIFECYCLE.displayValue));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String getNextGenerationManagedBy(GetDataStreamAction.Response response) throws IOException {
+        try (XContentBuilder builder = XContentBuilder.builder(XContentType.JSON.xContent())) {
+            response.toXContent(builder, ToXContent.EMPTY_PARAMS);
+            Map<String, Object> responseMap = XContentHelper.convertToMap(XContentType.JSON.xContent(), Strings.toString(builder), false);
+            List<Map<String, Object>> dataStreams = (List<Map<String, Object>>) responseMap.get("data_streams");
+            return (String) dataStreams.getFirst().get("next_generation_managed_by");
+        }
     }
 
     public void testGetEffectiveSettingsTemplateOnlySettings() {
@@ -573,8 +620,7 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
             dataStreamLifecycleSettings,
             emptyDataStreamFailureStoreSettings,
             new IndexSettingProviders(Set.of()),
-            null,
-            metadataDataStreamsService
+            null
         );
         assertNotNull(response.getDataStreams());
         assertThat(response.getDataStreams().size(), equalTo(1));
@@ -606,8 +652,7 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
             dataStreamLifecycleSettings,
             emptyDataStreamFailureStoreSettings,
             new IndexSettingProviders(Set.of()),
-            null,
-            metadataDataStreamsService
+            null
         );
         assertNotNull(response.getDataStreams());
         assertThat(response.getDataStreams().size(), equalTo(1));
@@ -645,8 +690,7 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
             dataStreamLifecycleSettings,
             emptyDataStreamFailureStoreSettings,
             new IndexSettingProviders(Set.of()),
-            null,
-            metadataDataStreamsService
+            null
         );
         assertNotNull(response.getDataStreams());
         assertThat(response.getDataStreams().size(), equalTo(1));
@@ -707,5 +751,11 @@ public class TransportGetDataStreamsActionTests extends ESTestCase {
             builder.put(index, false);
         }
         return builder.build();
+    }
+
+    private DataStreamLifecycleSettings createDataStreamLifecycleSettings(boolean enabled) {
+        var dataStreamLifecycleSettings = mock(DataStreamLifecycleSettings.class);
+        when(dataStreamLifecycleSettings.defaultLifecycleForTimeSeriesEnabled()).thenReturn(enabled);
+        return dataStreamLifecycleSettings;
     }
 }

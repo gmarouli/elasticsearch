@@ -262,7 +262,8 @@ public class DataStreamLifecycleServiceIT extends ESIntegTestCase {
                                 withEffectiveRetention,
                                 getDataStreamResponse.getRolloverConfiguration(),
                                 getDataStreamResponse.getDataGlobalRetention(),
-                                getDataStreamResponse.getFailuresGlobalRetention()
+                                getDataStreamResponse.getFailuresGlobalRetention(),
+                                randomBoolean()
                             );
                         String serialized = Strings.toString(builder);
                         Map<String, Object> resultMap = XContentHelper.convertToMap(

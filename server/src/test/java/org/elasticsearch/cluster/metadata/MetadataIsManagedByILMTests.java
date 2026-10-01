@@ -175,7 +175,7 @@ public class MetadataIsManagedByILMTests extends ESTestCase {
             DataStream.getDefaultBackingIndexName(dataStreamName, 1),
             Settings.builder().put("index.lifecycle.name", "logs").put(IndexSettings.PREFER_ILM, false).build()
         ).build();
-        IndexMode indexMode = randomFrom(null, IndexMode.STANDARD, IndexMode.LOGSDB);
+        IndexMode indexMode = randomBoolean() ? null : randomFrom(IndexMode.STANDARD, IndexMode.LOGSDB);
         Metadata metadata = Metadata.builder()
             .put(indexMetadata, true)
             .put(createDataStream(dataStreamName, indexMetadata, indexMode, null))

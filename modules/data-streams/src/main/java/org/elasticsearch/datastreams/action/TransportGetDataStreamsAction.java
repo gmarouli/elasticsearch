@@ -163,8 +163,7 @@ public class TransportGetDataStreamsAction extends TransportLocalProjectMetadata
                             dataStreamLifecycleSettings,
                             dataStreamFailureStoreSettings,
                             indexSettingProviders,
-                            maxTimestamps,
-                            metadataDataStreamsService
+                            maxTimestamps
                         )
                     );
                 }
@@ -185,8 +184,7 @@ public class TransportGetDataStreamsAction extends TransportLocalProjectMetadata
                     dataStreamLifecycleSettings,
                     dataStreamFailureStoreSettings,
                     indexSettingProviders,
-                    null,
-                    metadataDataStreamsService
+                    null
                 )
             );
         }
@@ -243,11 +241,11 @@ public class TransportGetDataStreamsAction extends TransportLocalProjectMetadata
         DataStreamLifecycleSettings dataStreamLifecycleSettings,
         DataStreamFailureStoreSettings dataStreamFailureStoreSettings,
         IndexSettingProviders indexSettingProviders,
-        @Nullable Map<String, Long> maxTimestamps,
-        MetadataDataStreamsService metadataDataStreamsService
+        @Nullable Map<String, Long> maxTimestamps
     ) {
         List<DataStream> dataStreams = getDataStreams(state.metadata(), indexNameExpressionResolver, request);
         List<GetDataStreamAction.Response.DataStreamInfo> dataStreamInfos = new ArrayList<>(dataStreams.size());
+        boolean defaultLifecycleForTimeSeriesEnabled = dataStreamLifecycleSettings.defaultLifecycleForTimeSeriesEnabled();
         for (DataStream dataStream : dataStreams) {
             // For this action, we are returning whether the failure store is effectively enabled, either in metadata or by cluster setting.
             // Users can use the get data stream options API to find out whether it is explicitly enabled in metadata.
@@ -326,9 +324,15 @@ public class TransportGetDataStreamsAction extends TransportLocalProjectMetadata
 
             Map<Index, IndexProperties> backingIndicesSettingsValues = new HashMap<>();
             ProjectMetadata metadata = state.metadata();
-            collectIndexSettingsValues(dataStream, backingIndicesSettingsValues, metadata, dataStream.getIndices());
+            collectIndexSettingsValues(
+                dataStream,
+                backingIndicesSettingsValues,
+                metadata,
+                dataStream.getIndices(),
+                defaultLifecycleForTimeSeriesEnabled
+            );
             if (dataStream.getFailureIndices().isEmpty() == false) {
-                collectIndexSettingsValues(dataStream, backingIndicesSettingsValues, metadata, dataStream.getFailureIndices());
+                collectIndexSettingsValues(dataStream, backingIndicesSettingsValues, metadata, dataStream.getFailureIndices(), false);
             }
 
             GetDataStreamAction.Response.TimeSeries timeSeries = null;
@@ -410,7 +414,8 @@ public class TransportGetDataStreamsAction extends TransportLocalProjectMetadata
             dataStreamInfos,
             request.includeDefaults() ? clusterSettings.get(DataStreamLifecycle.CLUSTER_LIFECYCLE_DEFAULT_ROLLOVER_SETTING) : null,
             dataStreamLifecycleSettings.getGlobalRetention(false),
-            dataStreamLifecycleSettings.getGlobalRetention(true)
+            dataStreamLifecycleSettings.getGlobalRetention(true),
+            defaultLifecycleForTimeSeriesEnabled
         );
     }
 
@@ -418,7 +423,8 @@ public class TransportGetDataStreamsAction extends TransportLocalProjectMetadata
         DataStream dataStream,
         Map<Index, IndexProperties> backingIndicesSettingsValues,
         ProjectMetadata metadata,
-        List<Index> backingIndices
+        List<Index> backingIndices,
+        boolean defaultLifecycleForTimeSeriesEnabled
     ) {
         for (Index index : backingIndices) {
             IndexMetadata indexMetadata = metadata.index(index);
@@ -433,18 +439,18 @@ public class TransportGetDataStreamsAction extends TransportLocalProjectMetadata
             }
             Boolean preferIlm = PREFER_ILM_SETTING.get(indexMetadata.getSettings());
             assert preferIlm != null : "must use the default prefer ilm setting value, if nothing else";
-            ManagedBy managedBy;
-            if (metadata.isIndexManagedByILM(indexMetadata)) {
-                managedBy = ManagedBy.ILM;
-            } else if (dataStream.isIndexManagedByDataStreamLifecycle(index, metadata::index)) {
-                managedBy = ManagedBy.LIFECYCLE;
-            } else {
-                managedBy = ManagedBy.UNMANAGED;
-            }
-            String indexMode = IndexSettings.MODE.get(indexMetadata.getSettings()).getName();
+            IndexMode indexMode = indexMetadata.getIndexMode() == null ? IndexMode.STANDARD : indexMetadata.getIndexMode();
+            ManagedBy managedBy = ManagedBy.fromLifecycleManagedBy(
+                DataStream.managedBy(
+                    indexMetadata.getLifecyclePolicyName(),
+                    dataStream.getEffectiveDataLifecycle(defaultLifecycleForTimeSeriesEnabled),
+                    () -> preferIlm,
+                    indexMode
+                )
+            );
             backingIndicesSettingsValues.put(
                 index,
-                new IndexProperties(preferIlm, indexMetadata.getLifecyclePolicyName(), managedBy, indexMode)
+                new IndexProperties(preferIlm, indexMetadata.getLifecyclePolicyName(), managedBy, indexMode.getName())
             );
         }
     }
