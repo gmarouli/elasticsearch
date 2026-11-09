@@ -132,7 +132,21 @@ public abstract class DownsamplingIntegTestCase extends ESIntegTestCase {
         @Nullable String endTime,
         DataStreamLifecycle.Template lifecycle
     ) throws IOException {
-        Settings.Builder settings = indexSettings(1, 0).putList(
+        putTSDBIndexTemplate(pattern, startTime, endTime, lifecycle, 1, 0);
+    }
+
+    /**
+     * Creates an index template that will create TSDB composable templates with the given number of shards and replicas
+     */
+    public void putTSDBIndexTemplate(
+        String pattern,
+        @Nullable String startTime,
+        @Nullable String endTime,
+        DataStreamLifecycle.Template lifecycle,
+        int shards,
+        int replicas
+    ) throws IOException {
+        Settings.Builder settings = indexSettings(shards, replicas).putList(
             IndexMetadata.INDEX_ROUTING_PATH.getKey(),
             List.of(FIELD_DIMENSION_KEYWORD)
         );
