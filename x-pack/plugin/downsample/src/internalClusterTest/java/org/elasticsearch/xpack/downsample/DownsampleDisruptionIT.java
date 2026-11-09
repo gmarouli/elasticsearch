@@ -10,6 +10,9 @@ package org.elasticsearch.xpack.downsample;
 import org.elasticsearch.action.ActionFuture;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRequest;
+import org.elasticsearch.action.admin.indices.flush.FlushAction;
+import org.elasticsearch.action.admin.indices.refresh.RefreshAction;
+import org.elasticsearch.action.admin.indices.settings.put.TransportUpdateSettingsAction;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.TransportBulkAction;
 import org.elasticsearch.action.downsample.DownsampleAction;
@@ -92,6 +95,55 @@ public class DownsampleDisruptionIT extends DownsamplingIntegTestCase {
     @After
     public void resetDisruptionPlugin() {
         DownsampleDisruptionPlugin.reset();
+    }
+
+    private enum MasterFailoverPoint {
+        /** The shard-level downsample tasks are running. */
+        SHARD_TASKS,
+        /** All shard-level tasks completed, the master is making the downsample index read-only. */
+        UPDATE_TARGET_SETTINGS,
+        /** The downsample index is read-only, the master is refreshing it before marking it as successfully downsampled. */
+        REFRESH_TARGET,
+        /** The downsample index is marked as successfully downsampled, the master is flushing it before responding. */
+        FLUSH_TARGET
+    }
+
+    /**
+     * Fails over the master at each step of the downsample operation it coordinates.
+     * Expected: the request is retried on the new master, which completes the operation, and the original request succeeds.
+     */
+    public void testMasterFailover() throws Exception {
+        final String coordinator = startCluster(3);
+        final int shards = between(1, 3);
+        createReadOnlyTimeSeriesIndex(SOURCE, shards, between(0, 1), DOC_COUNT);
+
+        final MasterFailoverPoint failoverPoint = randomFrom(MasterFailoverPoint.values());
+        logger.info("-> failing over the master at [{}]", failoverPoint);
+        final int parked = switch (failoverPoint) {
+            case SHARD_TASKS -> {
+                DownsampleDisruptionPlugin.parkAll(DownsampleDisruptionPlugin.shardTask(SOURCE));
+                yield shards;
+            }
+            case UPDATE_TARGET_SETTINGS -> parkOnce(TransportUpdateSettingsAction.TYPE.name());
+            case REFRESH_TARGET -> parkOnce(RefreshAction.NAME);
+            case FLUSH_TARGET -> parkOnce(FlushAction.NAME);
+        };
+        final ActionFuture<AcknowledgedResponse> downsample = startDownsample(coordinator, TARGET);
+        awaitParked(parked);
+
+        final String master = internalCluster().getMasterName();
+        if (randomBoolean()) {
+            logger.info("-> stopping master node [{}]", master);
+            internalCluster().stopCurrentMasterNode();
+        } else {
+            logger.info("-> restarting master node [{}]", master);
+            internalCluster().restartNode(master);
+        }
+        ensureStableCluster(internalCluster().size());
+
+        DownsampleDisruptionPlugin.release();
+        assertDownsampleSucceeds(downsample);
+        assertDownsampleCompleted(coordinator, TARGET);
     }
 
     /**
@@ -333,6 +385,11 @@ public class DownsampleDisruptionIT extends DownsamplingIntegTestCase {
             DownsampleAction.INSTANCE,
             new DownsampleAction.Request(TEST_REQUEST_TIMEOUT, SOURCE, target, waitTimeout, config)
         );
+    }
+
+    private static int parkOnce(String action) {
+        DownsampleDisruptionPlugin.park(1, DownsampleDisruptionPlugin.actionOnIndex(action, TARGET));
+        return 1;
     }
 
     private static void assertDownsampleSucceeds(ActionFuture<AcknowledgedResponse> downsample) {

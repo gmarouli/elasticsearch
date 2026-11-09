@@ -514,7 +514,7 @@ public class TransportDownsampleAction extends AcknowledgedTransportMasterNodeAc
     private void performShardDownsampling(
         final ProjectId projectId,
         DownsampleAction.Request request,
-        ActionListener<AcknowledgedResponse> listener,
+        ActionListener<AcknowledgedResponse> shardsListener,
         int minNumReplicas,
         IndexMetadata sourceIndexMetadata,
         String downsampleIndexName,
@@ -525,6 +525,9 @@ public class TransportDownsampleAction extends AcknowledgedTransportMasterNodeAc
         String[] dimensionFields,
         Map<String, String> multiFieldSources
     ) {
+        // Each shard reports its failure independently, for example when the master node shuts down every shard fails to wait
+        // for its persistent task. The listener must only be completed once, so only the first failure is reported.
+        final ActionListener<AcknowledgedResponse> listener = ActionListener.notifyOnce(shardsListener);
         final int numberOfShards = sourceIndexMetadata.getNumberOfShards();
         final Index sourceIndex = sourceIndexMetadata.getIndex();
         // NOTE: before we set the number of replicas to 0, as a result here we are
