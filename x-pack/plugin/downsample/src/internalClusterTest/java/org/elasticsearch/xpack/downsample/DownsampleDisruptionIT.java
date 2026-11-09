@@ -13,13 +13,16 @@ import org.elasticsearch.action.ActionRequest;
 import org.elasticsearch.action.admin.indices.flush.FlushAction;
 import org.elasticsearch.action.admin.indices.refresh.RefreshAction;
 import org.elasticsearch.action.admin.indices.settings.put.TransportUpdateSettingsAction;
+import org.elasticsearch.action.admin.indices.stats.ShardStats;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.TransportBulkAction;
 import org.elasticsearch.action.downsample.DownsampleAction;
 import org.elasticsearch.action.downsample.DownsampleConfig;
 import org.elasticsearch.action.support.master.AcknowledgedResponse;
+import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.metadata.ProjectId;
+import org.elasticsearch.cluster.routing.ShardRouting;
 import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDecider;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.core.TimeValue;
@@ -30,14 +33,21 @@ import org.elasticsearch.persistent.PersistentTasksService;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.search.aggregations.bucket.histogram.DateHistogramInterval;
 import org.elasticsearch.test.ESIntegTestCase;
+import org.elasticsearch.test.InternalTestCluster;
+import org.elasticsearch.test.disruption.NetworkDisruption;
+import org.elasticsearch.test.transport.MockTransportService;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardTask;
 import org.junit.After;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiPredicate;
 
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
@@ -45,6 +55,7 @@ import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.lessThan;
 import static org.hamcrest.Matchers.not;
@@ -53,9 +64,10 @@ import static org.hamcrest.Matchers.not;
  * Disrupts a downsample operation, started through the downsample API, while it is in flight. ILM and the data stream lifecycle
  * both drive downsampling through this API, so these are the recovery paths they rely on.
  * <p>
- * The tests control the operation with {@link DownsampleDisruptionPlugin}, which parks or fails the actions it is made of, and
- * then assert that the downsample index is complete and identical to the result of a downsample of the same source that ran
- * without disruption.
+ * Every test parks the operation at a chosen point with {@link DownsampleDisruptionPlugin}, applies a disruption, lets the
+ * operation continue and then asserts that the downsample index is complete and identical to the result of a downsample
+ * of the same source that ran without disruption. The source index has a random number of shards and replicas, so the
+ * operation is made of several shard-level persistent tasks spread over the data nodes.
  * <p>
  * Some disruptions make the downsample request fail. The API is designed to be retried in that case: a retry picks up the
  * downsample index left behind by the failed attempt. The tests that expect a failure retry the request, the others require
@@ -78,6 +90,7 @@ public class DownsampleDisruptionIT extends DownsamplingIntegTestCase {
     protected Collection<Class<? extends Plugin>> nodePlugins() {
         List<Class<? extends Plugin>> plugins = new ArrayList<>(super.nodePlugins());
         plugins.add(DownsampleDisruptionPlugin.class);
+        plugins.add(MockTransportService.TestPlugin.class);
         return plugins;
     }
 
@@ -87,7 +100,7 @@ public class DownsampleDisruptionIT extends DownsamplingIntegTestCase {
             .put(super.nodeSettings(nodeOrdinal, otherSettings))
             // A shard-level downsample task is not reassigned when its source shard relocates, so the task fails. Rebalancing can
             // relocate source shards at any time, for example when the downsample index is created, so it is disabled to have each
-            // test exercise only the disruption it applies.
+            // test exercise only the disruption it applies. testSourceShardRelocation covers the relocation of source shards.
             .put(EnableAllocationDecider.CLUSTER_ROUTING_REBALANCE_ENABLE_SETTING.getKey(), "none")
             .build();
     }
@@ -95,6 +108,157 @@ public class DownsampleDisruptionIT extends DownsamplingIntegTestCase {
     @After
     public void resetDisruptionPlugin() {
         DownsampleDisruptionPlugin.reset();
+    }
+
+    /**
+     * Restarts a node that runs a shard-level downsample task.
+     * Expected: its tasks are reassigned once their source shards are available again, and the original request succeeds.
+     */
+    public void testNodeRunningShardTaskRestarts() throws Exception {
+        final String coordinator = startCluster(1);
+        final int shards = between(1, 3);
+        createReadOnlyTimeSeriesIndex(SOURCE, shards, between(0, 1), DOC_COUNT);
+
+        DownsampleDisruptionPlugin.parkAll(DownsampleDisruptionPlugin.shardTask(SOURCE));
+        final ActionFuture<AcknowledgedResponse> downsample = startDownsample(coordinator, TARGET);
+        awaitParked(shards);
+
+        final String victim = randomFrom(DownsampleDisruptionPlugin.parkedOnNodes());
+        logger.info("-> restarting node [{}] running a shard downsample task", victim);
+        internalCluster().restartNode(victim);
+        ensureStableCluster(internalCluster().size());
+        // Every task, including the ones that ran on the restarted node, must be running again before we let them continue.
+        awaitParked(shards);
+
+        DownsampleDisruptionPlugin.release();
+        assertDownsampleSucceeds(downsample);
+        assertDownsampleCompleted(coordinator, TARGET);
+    }
+
+    /**
+     * Stops a node that runs a shard-level downsample task.
+     * Expected: its tasks are reassigned to the nodes holding the promoted replicas, and the original request succeeds.
+     */
+    public void testNodeRunningShardTaskLeaves() throws Exception {
+        final String coordinator = startCluster(1);
+        final int shards = between(1, 3);
+        createReadOnlyTimeSeriesIndex(SOURCE, shards, 1, DOC_COUNT);
+
+        DownsampleDisruptionPlugin.parkAll(DownsampleDisruptionPlugin.shardTask(SOURCE));
+        final ActionFuture<AcknowledgedResponse> downsample = startDownsample(coordinator, TARGET);
+        awaitParked(shards);
+
+        final String victim = randomFrom(DownsampleDisruptionPlugin.parkedOnNodes());
+        // The downsample index has no replicas while it is being built, so losing a node that holds one of its shards loses data.
+        // This test covers the loss of the source shards only, so the downsample index shards are moved off the node first.
+        // testNodeHoldingTargetShardLeaves covers the loss of a downsample index shard.
+        moveShardsOff(TARGET, victim, true);
+
+        logger.info("-> stopping node [{}] running a shard downsample task", victim);
+        internalCluster().stopNode(victim);
+        ensureStableCluster(internalCluster().size());
+        awaitParked(shards);
+        assertThat(DownsampleDisruptionPlugin.parkedOnNodes(), not(hasItem(victim)));
+
+        DownsampleDisruptionPlugin.release();
+        assertDownsampleSucceeds(downsample);
+        assertDownsampleCompleted(coordinator, TARGET);
+    }
+
+    /**
+     * Stops the node holding the only copy of a downsample index shard, which has no replicas while it is being built.
+     * Expected: the original request and a retry fail while the node is down, and a retry succeeds once the node is back.
+     */
+    public void testNodeHoldingTargetShardLeaves() throws Exception {
+        final String coordinator = startCluster(1);
+        final int shards = between(1, 3);
+        // The source index has a replica, so that the loss of the node does not also make the source shards unavailable
+        createReadOnlyTimeSeriesIndex(SOURCE, shards, 1, DOC_COUNT);
+
+        DownsampleDisruptionPlugin.parkAll(DownsampleDisruptionPlugin.shardTask(SOURCE));
+        final ActionFuture<AcknowledgedResponse> downsample = startDownsample(coordinator, TARGET);
+        awaitParked(shards);
+
+        // Documents are routed by their dimensions, so some shards can be empty. The downsample of an empty shard writes nothing to
+        // the downsample index, so the loss of that downsample index shard would not affect the operation.
+        final String victim = randomFrom(nodesHoldingTargetShardsWithDocuments());
+        logger.info("-> stopping node [{}] holding a shard of the downsample index", victim);
+        internalCluster().restartNode(victim, new InternalTestCluster.RestartCallback() {
+            @Override
+            public Settings onNodeStopped(String nodeName) {
+                // The stopped node is no longer counted in the size of the cluster
+                ensureStableCluster(internalCluster().size(), coordinator);
+                // Let the shard-level tasks, including the ones reassigned from the stopped node, write to the downsample index
+                DownsampleDisruptionPlugin.release();
+
+                final Exception originalFailure = expectThrows(Exception.class, () -> downsample.actionGet(WAIT_TIMEOUT));
+                logger.info("-> the original downsample request failed while node [{}] is down", nodeName, originalFailure);
+
+                final Exception retryFailure = expectThrows(
+                    Exception.class,
+                    () -> startDownsample(coordinator, TARGET).actionGet(WAIT_TIMEOUT)
+                );
+                logger.info("-> the retried downsample request failed while node [{}] is down", nodeName, retryFailure);
+                assertThat(
+                    IndexMetadata.INDEX_DOWNSAMPLE_STATUS.get(indexMetadata(TARGET).getSettings()),
+                    equalTo(IndexMetadata.DownsampleTaskStatus.STARTED)
+                );
+                return Settings.EMPTY;
+            }
+        });
+        ensureStableCluster(internalCluster().size());
+        // The node brings back the only copy of the downsample index shard
+        ensureGreen(TARGET);
+
+        assertDownsampleSucceeds(startDownsample(coordinator, TARGET));
+        assertDownsampleCompleted(coordinator, TARGET);
+    }
+
+    /**
+     * Isolates a node that runs a shard-level downsample task until its tasks are reassigned, and then lets it rejoin.
+     * Expected: the stale tasks of the rejoined node give up, and the original request succeeds.
+     */
+    public void testNodeRunningShardTaskIsIsolated() throws Exception {
+        final String coordinator = startCluster(1);
+        final int shards = between(1, 3);
+        createReadOnlyTimeSeriesIndex(SOURCE, shards, 1, DOC_COUNT);
+
+        DownsampleDisruptionPlugin.parkAll(DownsampleDisruptionPlugin.shardTask(SOURCE));
+        final ActionFuture<AcknowledgedResponse> downsample = startDownsample(coordinator, TARGET);
+        awaitParked(shards);
+
+        final String victim = randomFrom(DownsampleDisruptionPlugin.parkedOnNodes());
+        final long tasksOnVictim = DownsampleDisruptionPlugin.parkedOnNodes().stream().filter(victim::equals).count();
+        final Set<String> otherNodes = new HashSet<>(Arrays.asList(internalCluster().getNodeNames()));
+        otherNodes.remove(victim);
+        final NetworkDisruption partition = new NetworkDisruption(
+            new NetworkDisruption.TwoPartitions(Set.of(victim), otherNodes),
+            NetworkDisruption.DISCONNECT
+        );
+        internalCluster().setDisruptionScheme(partition);
+
+        logger.info("-> isolating node [{}] running a shard downsample task", victim);
+        partition.startDisrupting();
+        ensureStableCluster(otherNodes.size(), coordinator);
+        // The tasks of the isolated node are reassigned to the nodes holding the promoted replicas
+        assertBusy(
+            () -> assertThat(
+                DownsampleDisruptionPlugin.parkedOnNodes().stream().filter(node -> victim.equals(node) == false).count(),
+                equalTo((long) shards)
+            ),
+            30,
+            TimeUnit.SECONDS
+        );
+
+        logger.info("-> healing the partition");
+        partition.stopDisrupting();
+        ensureStableCluster(otherNodes.size() + 1);
+        assertThat(DownsampleDisruptionPlugin.parkedOnNodes().stream().filter(victim::equals).count(), equalTo(tasksOnVictim));
+
+        // This also releases the stale tasks of the isolated node. They are no longer assigned to it and must give up.
+        DownsampleDisruptionPlugin.release();
+        assertDownsampleSucceeds(downsample);
+        assertDownsampleCompleted(coordinator, TARGET);
     }
 
     private enum MasterFailoverPoint {
@@ -143,6 +307,94 @@ public class DownsampleDisruptionIT extends DownsamplingIntegTestCase {
 
         DownsampleDisruptionPlugin.release();
         assertDownsampleSucceeds(downsample);
+        assertDownsampleCompleted(coordinator, TARGET);
+    }
+
+    /**
+     * Relocates the source shards away from a node that runs a shard-level downsample task.
+     * Expected: the task is not reassigned, so it fails, and a retry of the request succeeds.
+     */
+    public void testSourceShardRelocation() throws Exception {
+        final String coordinator = startCluster(1);
+        final int shards = between(1, 3);
+        createReadOnlyTimeSeriesIndex(SOURCE, shards, 0, DOC_COUNT);
+
+        DownsampleDisruptionPlugin.parkAll(DownsampleDisruptionPlugin.shardTask(SOURCE));
+        final ActionFuture<AcknowledgedResponse> downsample = startDownsample(coordinator, TARGET);
+        awaitParked(shards);
+
+        final String node = randomFrom(DownsampleDisruptionPlugin.parkedOnNodes());
+        logger.info("-> relocating the source shards off node [{}] running a shard downsample task", node);
+        moveShardsOff(SOURCE, node, true);
+
+        DownsampleDisruptionPlugin.release();
+        assertDownsampleSucceedsAfterRetries(downsample, coordinator, TARGET);
+        assertDownsampleCompleted(coordinator, TARGET);
+    }
+
+    /**
+     * Relocates the downsample index shards, before or while the shard-level tasks write to them.
+     * Expected: the original request succeeds.
+     */
+    public void testTargetShardRelocation() throws Exception {
+        final String coordinator = startCluster(1);
+        final int shards = between(1, 3);
+        createReadOnlyTimeSeriesIndex(SOURCE, shards, between(0, 1), DOC_COUNT);
+
+        DownsampleDisruptionPlugin.parkAll(DownsampleDisruptionPlugin.shardTask(SOURCE));
+        final ActionFuture<AcknowledgedResponse> downsample = startDownsample(coordinator, TARGET);
+        awaitParked(shards);
+
+        final String node = randomFrom(nodesHoldingShards(TARGET));
+        final boolean overlapWithIndexing = randomBoolean();
+        logger.info("-> relocating the downsample index shards off node [{}], overlapping with indexing [{}]", node, overlapWithIndexing);
+        moveShardsOff(TARGET, node, overlapWithIndexing == false);
+
+        DownsampleDisruptionPlugin.release();
+        assertDownsampleSucceeds(downsample);
+        assertDownsampleCompleted(coordinator, TARGET);
+    }
+
+    private enum FailurePoint {
+        PERSISTENT_TASK_START,
+        BULK_INDEXING,
+        UPDATE_TARGET_SETTINGS,
+        REFRESH_TARGET,
+        FLUSH_TARGET
+    }
+
+    /**
+     * Fails one of the actions the downsample operation is made of.
+     * Expected: a failed flush is ignored, any other failure fails the request, and a retry succeeds.
+     */
+    public void testStepFailure() throws Exception {
+        final String coordinator = startCluster(1);
+        createReadOnlyTimeSeriesIndex(SOURCE, between(1, 3), between(0, 1), DOC_COUNT);
+
+        final FailurePoint failurePoint = randomFrom(FailurePoint.values());
+        logger.info("-> failing [{}]", failurePoint);
+        final BiPredicate<String, ActionRequest> matcher = switch (failurePoint) {
+            case PERSISTENT_TASK_START -> DownsampleDisruptionPlugin.persistentTaskStart();
+            case BULK_INDEXING -> DownsampleDisruptionPlugin.actionOnIndex(TransportBulkAction.NAME, TARGET);
+            case UPDATE_TARGET_SETTINGS -> DownsampleDisruptionPlugin.actionOnIndex(TransportUpdateSettingsAction.TYPE.name(), TARGET);
+            case REFRESH_TARGET -> DownsampleDisruptionPlugin.actionOnIndex(RefreshAction.NAME, TARGET);
+            case FLUSH_TARGET -> DownsampleDisruptionPlugin.actionOnIndex(FlushAction.NAME, TARGET);
+        };
+        DownsampleDisruptionPlugin.failNext(1, matcher);
+
+        final ActionFuture<AcknowledgedResponse> downsample = startDownsample(coordinator, TARGET);
+        switch (failurePoint) {
+            // The downsample index is complete and marked as such before it is flushed, so a failed flush is ignored
+            case FLUSH_TARGET -> assertDownsampleSucceeds(downsample);
+            // A failed bulk request aborts the shard-level task, which may either fail or be retried
+            case BULK_INDEXING -> assertDownsampleSucceedsAfterRetries(downsample, coordinator, TARGET);
+            // The failure of a step the master coordinates is reported to the caller, which is expected to retry
+            case PERSISTENT_TASK_START, UPDATE_TARGET_SETTINGS, REFRESH_TARGET -> {
+                expectThrows(Exception.class, () -> downsample.actionGet(WAIT_TIMEOUT));
+                assertDownsampleSucceeds(startDownsample(coordinator, TARGET));
+            }
+        }
+        assertThat("the failure was not injected", DownsampleDisruptionPlugin.remainingFailures(), equalTo(0));
         assertDownsampleCompleted(coordinator, TARGET);
     }
 
@@ -392,8 +644,73 @@ public class DownsampleDisruptionIT extends DownsamplingIntegTestCase {
         return 1;
     }
 
+    /**
+     * Excludes {@code node} from the allocation of {@code index}, optionally waiting until its shards have moved off it.
+     */
+    private void moveShardsOff(String index, String node, boolean waitForRelocation) throws Exception {
+        updateIndexSettings(Settings.builder().put(IndexMetadata.INDEX_ROUTING_EXCLUDE_GROUP_PREFIX + "._name", node), index);
+        if (waitForRelocation) {
+            assertBusy(() -> assertThat(nodesHoldingShards(index), not(hasItem(node))), 60, TimeUnit.SECONDS);
+            ensureGreen(index);
+        }
+    }
+
+    private static List<String> nodesHoldingShards(String index) {
+        final ClusterState state = clusterAdmin().prepareState(TEST_REQUEST_TIMEOUT).get().getState();
+        return state.routingTable()
+            .allShards(index)
+            .stream()
+            .filter(ShardRouting::assignedToNode)
+            .map(shard -> state.nodes().get(shard.currentNodeId()).getName())
+            .toList();
+    }
+
+    /**
+     * @return the nodes holding a shard of the downsample index that the downsample operation writes documents to. The downsample
+     * index has as many shards as the source index and routes documents the same way, so its shard with a given id receives the
+     * downsampled documents of the source shard with the same id.
+     */
+    private static List<String> nodesHoldingTargetShardsWithDocuments() {
+        final Set<Integer> shardsWithDocuments = new HashSet<>();
+        for (ShardStats shardStats : indicesAdmin().prepareStats(SOURCE).setDocs(true).get().getShards()) {
+            if (shardStats.getShardRouting().primary() && shardStats.getStats().getDocs().getCount() > 0) {
+                shardsWithDocuments.add(shardStats.getShardRouting().id());
+            }
+        }
+        final ClusterState state = clusterAdmin().prepareState(TEST_REQUEST_TIMEOUT).get().getState();
+        final List<String> nodes = state.routingTable()
+            .allShards(TARGET)
+            .stream()
+            .filter(shard -> shard.assignedToNode() && shardsWithDocuments.contains(shard.id()))
+            .map(shard -> state.nodes().get(shard.currentNodeId()).getName())
+            .toList();
+        assertThat(nodes, not(empty()));
+        return nodes;
+    }
+
     private static void assertDownsampleSucceeds(ActionFuture<AcknowledgedResponse> downsample) {
         assertTrue(safeGet(downsample).isAcknowledged());
+    }
+
+    /**
+     * Waits for the original downsample request and, if it failed, retries it until it succeeds.
+     */
+    private void assertDownsampleSucceedsAfterRetries(ActionFuture<AcknowledgedResponse> downsample, String coordinator, String target)
+        throws Exception {
+        try {
+            assertTrue(downsample.actionGet(WAIT_TIMEOUT).isAcknowledged());
+            logger.info("-> the original downsample request succeeded");
+            return;
+        } catch (Exception e) {
+            logger.info("-> the original downsample request failed, retrying", e);
+        }
+        assertBusy(() -> {
+            try {
+                assertTrue(startDownsample(coordinator, target).actionGet(WAIT_TIMEOUT).isAcknowledged());
+            } catch (Exception e) {
+                throw new AssertionError("downsample retry failed", e);
+            }
+        }, 2, TimeUnit.MINUTES);
     }
 
     /**
