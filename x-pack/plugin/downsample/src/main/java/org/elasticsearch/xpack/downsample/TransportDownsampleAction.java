@@ -95,6 +95,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -531,8 +532,35 @@ public class TransportDownsampleAction extends AcknowledgedTransportMasterNodeAc
         // only dealing with primary shards.
         final AtomicInteger countDown = new AtomicInteger(numberOfShards);
         final AtomicBoolean errorReported = new AtomicBoolean(false);
+        final Consumer<ShardId> onShardCompleted = shardId -> {
+            logger.info("Downsampling completed for shard [{}]", shardId);
+            if (countDown.decrementAndGet() == 0) {
+                logger.info("All downsampling tasks completed [{}]", numberOfShards);
+                updateTargetIndexSettingStep(
+                    projectId,
+                    request,
+                    listener,
+                    minNumReplicas,
+                    sourceIndexMetadata,
+                    downsampleIndexName,
+                    parentTask,
+                    startTime
+                );
+            }
+        };
+        final IndexMetadata targetIndexMetadata = clusterService.state().metadata().getProject(projectId).index(downsampleIndexName);
+        // The persistent task of a shard is removed when it completes, so the shards that completed during a previous request are only
+        // known from the record in the target index metadata. They must not be downsampled again.
+        final Set<Integer> completedShards = targetIndexMetadata == null
+            ? Set.of()
+            : DownsampleCompletedShards.completedShards(targetIndexMetadata);
         for (int shardNum = 0; shardNum < numberOfShards; shardNum++) {
             final ShardId shardId = new ShardId(sourceIndex, shardNum);
+            if (completedShards.contains(shardNum)) {
+                logger.info("Skipping shard [{}], it already completed downsampling into [{}]", shardId, downsampleIndexName);
+                onShardCompleted.accept(shardId);
+                continue;
+            }
             final String persistentTaskId = createPersistentTaskId(
                 downsampleIndexName,
                 shardId,
@@ -573,20 +601,7 @@ public class TransportDownsampleAction extends AcknowledgedTransportMasterNodeAc
                         }
                     }
 
-                    logger.info("Downsampling task [" + persistentTaskId + " completed for shard " + params.shardId());
-                    if (countDown.decrementAndGet() == 0) {
-                        logger.info("All downsampling tasks completed [" + numberOfShards + "]");
-                        updateTargetIndexSettingStep(
-                            projectId,
-                            request,
-                            listener,
-                            minNumReplicas,
-                            sourceIndexMetadata,
-                            downsampleIndexName,
-                            parentTask,
-                            startTime
-                        );
-                    }
+                    onShardCompleted.accept(params.shardId());
                 }
 
                 @Override

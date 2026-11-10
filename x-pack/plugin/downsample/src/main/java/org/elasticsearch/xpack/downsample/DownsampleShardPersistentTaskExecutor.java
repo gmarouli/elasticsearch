@@ -27,6 +27,7 @@ import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.routing.IndexShardRoutingTable;
 import org.elasticsearch.cluster.routing.ShardRouting;
 import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.util.concurrent.AbstractRunnable;
 import org.elasticsearch.common.util.concurrent.EsExecutors;
@@ -203,6 +204,18 @@ public class DownsampleShardPersistentTaskExecutor extends PersistentTasksExecut
         DownsampleShardTaskParams params,
         BytesRef lastDownsampledTsid
     ) {
+        // A start request that was already in flight when the shard completed can still create a task for it. Downsampling the shard again
+        // would waste work, and it would fail once the target index is read-only, so the task completes right away.
+        if (isRecordedAsCompleted(clusterService.state(), params)) {
+            LOGGER.info(
+                "Downsampling task [{}] not running, shard [{}] already completed downsampling into [{}]",
+                task.getPersistentTaskId(),
+                params.shardId(),
+                params.downsampleIndex()
+            );
+            task.markAsCompleted();
+            return;
+        }
         client.threadPool().executor(Downsample.DOWNSAMPLE_TASK_THREAD_POOL_NAME).execute(new AbstractRunnable() {
             @Override
             public void onFailure(Exception e) {
@@ -254,6 +267,18 @@ public class DownsampleShardPersistentTaskExecutor extends PersistentTasksExecut
     }
 
     /**
+     * @return whether the target index records the shard of {@code params} as completed. This is false when the source or the target index
+     * cannot be found, the task then runs and reports the missing index the usual way.
+     */
+    static boolean isRecordedAsCompleted(ClusterState clusterState, DownsampleShardTaskParams params) {
+        return clusterState.metadata()
+            .lookupProject(params.shardId().getIndex())
+            .map(project -> project.index(params.downsampleIndex()))
+            .map(targetIndex -> DownsampleCompletedShards.completedShards(targetIndex).contains(params.shardId().id()))
+            .orElse(false);
+    }
+
+    /**
      * Persist the completion of the downsample shard task to the target index metadata. If the index metadata update fails, a
      * warning is logged and the task is completed nonetheless.
      */
@@ -275,11 +300,11 @@ public class DownsampleShardPersistentTaskExecutor extends PersistentTasksExecut
             new MarkDownsampleShardCompletedAction.Request(TimeValue.THIRTY_SECONDS, params.downsampleIndex(), params.shardId().id()),
             ActionListener.wrap(response -> task.markAsCompleted(), e -> {
                 LOGGER.warn(
-                    "Downsampling task ["
-                        + task.getPersistentTaskId()
-                        + "] could not record the completion of shard ["
-                        + params.shardId()
-                        + "]",
+                    () -> Strings.format(
+                        "Downsampling task [%s] could not record the completion of shard [%s]",
+                        task.getPersistentTaskId(),
+                        params.shardId()
+                    ),
                     e
                 );
                 task.markAsCompleted();

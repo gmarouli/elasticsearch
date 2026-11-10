@@ -7,6 +7,7 @@
 
 package org.elasticsearch.xpack.downsample;
 
+import org.apache.logging.log4j.Level;
 import org.elasticsearch.action.ActionFuture;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRequest;
@@ -19,8 +20,10 @@ import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.metadata.ProjectId;
 import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDecider;
 import org.elasticsearch.common.Priority;
+import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.logging.LogManager;
 import org.elasticsearch.logging.Logger;
 import org.elasticsearch.persistent.PersistentTasksCustomMetadata;
@@ -29,6 +32,7 @@ import org.elasticsearch.persistent.StartPersistentTaskAction;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.search.aggregations.bucket.histogram.DateHistogramInterval;
 import org.elasticsearch.test.ESIntegTestCase;
+import org.elasticsearch.test.MockLog;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardTask;
 import org.junit.After;
 
@@ -36,9 +40,13 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiPredicate;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
+import static org.elasticsearch.xpack.core.ilm.DownsampleAction.DOWNSAMPLED_INDEX_PREFIX;
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
@@ -154,6 +162,13 @@ public class DownsampleResilienceIT extends DownsamplingIntegTestCase {
         DownsampleDisruptionPlugin.parkAll(incompleteShard);
         final ActionFuture<AcknowledgedResponse> first = startDownsample(coordinator, TARGET);
         awaitParked(1);
+        // The other shards have completed once they are recorded in the target index metadata. Only then is it certain that none of them
+        // is still to start its task, which the second request would start again.
+        final Set<Integer> expectedCompleted = IntStream.range(0, shards)
+            .filter(shard -> shard != parkedShardId)
+            .boxed()
+            .collect(Collectors.toSet());
+        assertBusy(() -> assertThat(DownsampleCompletedShards.completedShards(indexMetadata(TARGET)), equalTo(expectedCompleted)));
         // A persistent task is removed when it completes, and so is its running task on the node, so only the parked one is left
         assertBusy(() -> {
             assertThat(shardTasks(), hasSize(1));
@@ -183,6 +198,83 @@ public class DownsampleResilienceIT extends DownsamplingIntegTestCase {
         assertDownsampleSucceeds(first);
         // The second request should be able to finish without creating any new persistent tasks that would be parked.
         assertDownsampleSucceeds(second);
+        assertDownsampleCompleted(coordinator, TARGET);
+    }
+
+    /**
+     * A start request that was already in flight when a shard completed lands after the shard completed, so its persistent task is not
+     * there anymore and the request creates a new one, for instance when a coordinator read the cluster state just before the shard
+     * completed. Every shard but one has completed, and the start request is sent for one of the completed shards.
+     * Expected: the new task completes right away without downsampling the shard again, and the downsample index is still complete.
+     */
+    public void testStartRequestAfterShardCompleted() throws Exception {
+        final String coordinator = startCluster(1);
+        final int shards = between(2, 3);
+        createReadOnlyTimeSeriesIndex(SOURCE, shards, between(0, 1), DOC_COUNT);
+
+        final int parkedShardId = randomIntBetween(0, shards - 1);
+        DownsampleDisruptionPlugin.parkAll(DownsampleDisruptionPlugin.downsamplingShardTask(SOURCE, parkedShardId));
+        final ActionFuture<AcknowledgedResponse> first = startDownsample(coordinator, TARGET);
+        awaitParked(1);
+        final Set<Integer> completedShards = IntStream.range(0, shards)
+            .filter(shard -> shard != parkedShardId)
+            .boxed()
+            .collect(Collectors.toSet());
+        // The completed shards are recorded and their persistent tasks are gone, so only the parked one is left
+        assertBusy(() -> {
+            assertThat(DownsampleCompletedShards.completedShards(indexMetadata(TARGET)), equalTo(completedShards));
+            assertThat(shardTasks(), hasSize(1));
+        }, 60, TimeUnit.SECONDS);
+
+        final int lateShardId = randomFrom(completedShards);
+        final ShardId lateShard = new ShardId(indexMetadata(SOURCE).getIndex(), lateShardId);
+        final String lateTaskId = DOWNSAMPLED_INDEX_PREFIX + TARGET + "-" + lateShardId + "-" + config.getInterval();
+        final DownsampleShardTaskParams lateParams = new DownsampleShardTaskParams(
+            config,
+            TARGET,
+            0,
+            Long.MAX_VALUE,
+            lateShard,
+            Strings.EMPTY_ARRAY,
+            Strings.EMPTY_ARRAY,
+            Strings.EMPTY_ARRAY,
+            Map.of()
+        );
+        final PersistentTasksService persistentTasksService = internalCluster().getInstance(PersistentTasksService.class, coordinator);
+        MockLog.assertThatLogger(() -> {
+            safeAwait(
+                listener -> persistentTasksService.sendStartRequest(
+                    lateTaskId,
+                    DownsampleShardTask.TASK_NAME,
+                    lateParams,
+                    TimeValue.THIRTY_SECONDS,
+                    listener.map(task -> null)
+                )
+            );
+            // The task completes immediately, so it is removed again and only the parked shard is left
+            try {
+                assertBusy(() -> assertThat(shardTasks(), hasSize(1)), 60, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                throw new AssertionError(e);
+            }
+        },
+            DownsampleShardPersistentTaskExecutor.class,
+            new MockLog.SeenEventExpectation(
+                "the late task completes without running",
+                DownsampleShardPersistentTaskExecutor.class.getCanonicalName(),
+                Level.INFO,
+                "shard [" + lateShard + "] already completed downsampling into [" + TARGET + "]"
+            ),
+            new MockLog.UnseenEventExpectation(
+                "the late shard is not downsampled again",
+                DownsampleShardIndexer.class.getCanonicalName(),
+                Level.INFO,
+                "on shard " + lateShard + " started"
+            )
+        );
+
+        DownsampleDisruptionPlugin.release();
+        assertDownsampleSucceeds(first);
         assertDownsampleCompleted(coordinator, TARGET);
     }
 

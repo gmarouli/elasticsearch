@@ -11,8 +11,10 @@ import org.elasticsearch.action.downsample.DownsampleConfig;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.DataStreamTestHelper;
+import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.metadata.Metadata;
 import org.elasticsearch.cluster.metadata.ProjectId;
+import org.elasticsearch.cluster.metadata.ProjectMetadata;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.node.DiscoveryNodeRole;
 import org.elasticsearch.cluster.node.DiscoveryNodeUtils;
@@ -24,6 +26,7 @@ import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.UUIDs;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.index.Index;
+import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.persistent.ClusterPersistentTasksCustomMetadata;
 import org.elasticsearch.persistent.PersistentTasksCustomMetadata;
@@ -40,6 +43,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.function.Function;
+import java.util.function.IntFunction;
 
 import static org.elasticsearch.cluster.routing.ShardRoutingState.STARTED;
 import static org.elasticsearch.cluster.routing.TestShardRouting.shardRoutingBuilder;
@@ -67,6 +72,37 @@ public class DownsampleShardPersistentTaskExecutorTests extends ESTestCase {
             List.of(new Tuple<>(start, end))
         );
         executor = new DownsampleShardPersistentTaskExecutor(mock(Client.class), DownsampleShardTask.TASK_NAME, mock(Executor.class));
+    }
+
+    public void testIsRecordedAsCompleted() {
+        var sourceIndex = initialClusterState.metadata().getProject(projectId).dataStreams().get("metrics-app1").getWriteIndex();
+        String targetIndexName = "target";
+        var target = IndexMetadata.builder(targetIndexName).settings(indexSettings(IndexVersion.current(), randomUUID(), 3, 0)).build();
+        int completedShard = between(0, 2);
+        var withRecord = DownsampleCompletedShards.withCompletedShard(target, completedShard);
+
+        Function<IndexMetadata, ClusterState> stateWith = targetIndex -> ClusterState.builder(initialClusterState)
+            .putProjectMetadata(ProjectMetadata.builder(initialClusterState.metadata().getProject(projectId)).put(targetIndex, false))
+            .build();
+        IntFunction<DownsampleShardTaskParams> paramsFor = shard -> new DownsampleShardTaskParams(
+            new DownsampleConfig(new DateHistogramInterval("1h"), randomSamplingMethod()),
+            targetIndexName,
+            1,
+            1,
+            new ShardId(sourceIndex, shard),
+            Strings.EMPTY_ARRAY,
+            Strings.EMPTY_ARRAY,
+            Strings.EMPTY_ARRAY,
+            Map.of()
+        );
+
+        // The recorded shard is detected, the others are not
+        var recorded = stateWith.apply(withRecord);
+        assertTrue(DownsampleShardPersistentTaskExecutor.isRecordedAsCompleted(recorded, paramsFor.apply(completedShard)));
+        assertFalse(DownsampleShardPersistentTaskExecutor.isRecordedAsCompleted(recorded, paramsFor.apply((completedShard + 1) % 3)));
+        // Nothing recorded, or no target index at all
+        assertFalse(DownsampleShardPersistentTaskExecutor.isRecordedAsCompleted(stateWith.apply(target), paramsFor.apply(completedShard)));
+        assertFalse(DownsampleShardPersistentTaskExecutor.isRecordedAsCompleted(initialClusterState, paramsFor.apply(completedShard)));
     }
 
     public void testGetAssignment() {

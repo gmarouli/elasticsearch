@@ -47,6 +47,7 @@ import org.elasticsearch.index.mapper.MapperService;
 import org.elasticsearch.index.mapper.MappingLookup;
 import org.elasticsearch.index.mapper.TimeSeriesParams;
 import org.elasticsearch.indices.IndicesService;
+import org.elasticsearch.persistent.PersistentTaskParams;
 import org.elasticsearch.persistent.PersistentTasksCustomMetadata;
 import org.elasticsearch.persistent.PersistentTasksService;
 import org.elasticsearch.search.aggregations.bucket.histogram.DateHistogramInterval;
@@ -63,14 +64,19 @@ import org.hamcrest.Matchers;
 import org.junit.After;
 import org.junit.Before;
 import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.stubbing.Answer;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.elasticsearch.xpack.downsample.DownsampleActionSingleNodeTests.randomSamplingMethod;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -224,6 +230,8 @@ public class TransportDownsampleActionTests extends ESTestCase {
             .build();
 
         when(projectResolver.getProjectMetadata(any(ClusterState.class))).thenReturn(projectMetadata);
+        // The coordinator reads the target index metadata from the cluster service when it starts the shard-level tasks
+        when(clusterService.state()).thenReturn(clusterState);
 
         Answer<Void> mockPersistentTask = invocation -> {
             ActionListener<PersistentTasksCustomMetadata.PersistentTask<?>> listener = invocation.getArgument(4);
@@ -294,6 +302,106 @@ public class TransportDownsampleActionTests extends ESTestCase {
         verifyIndexFinalisation();
     }
 
+    /**
+     * The persistent task of a shard is removed when it completes, so a request for an index that is already being downsampled only
+     * knows which shards are done from the record in the target index metadata. Expected: no shard-level task is started for them.
+     */
+    public void testDownsamplingSkipsShardsRecordedAsCompleted() {
+        final Set<Integer> completedShards = randomSetOfShards();
+        final Set<Integer> allShards = IntStream.range(0, primaryShards).boxed().collect(Collectors.toSet());
+        final Set<Integer> expectedStarted = new HashSet<>(allShards);
+        expectedStarted.removeAll(completedShards);
+
+        // Each remaining shard is started exactly once
+        assertThat(downsampleAndGetStartedShards(completedShards), containsInAnyOrder(expectedStarted.toArray()));
+    }
+
+    private Set<Integer> randomSetOfShards() {
+        return new HashSet<>(randomSubsetOf(between(1, primaryShards), IntStream.range(0, primaryShards).boxed().toList()));
+    }
+
+    private List<Integer> downsampleAndGetStartedShards(Set<Integer> recordedShards) {
+        safeGet(downsampleWithRecordedShards(recordedShards));
+
+        // Collect the shards that got a shard-level task
+        ArgumentCaptor<PersistentTaskParams> startedParams = ArgumentCaptor.forClass(PersistentTaskParams.class);
+        // ESTestCase also has an atLeast(int), so the Mockito one is qualified
+        verify(persistentTaskService, org.mockito.Mockito.atLeast(0)).sendStartRequest(
+            anyString(),
+            anyString(),
+            startedParams.capture(),
+            any(),
+            any()
+        );
+        // The request still completes the downsample index, even when no shard-level task was needed
+        verifyIndexFinalisation();
+        return startedParams.getAllValues().stream().map(params -> ((DownsampleShardTaskParams) params).shardId().id()).toList();
+    }
+
+    /**
+     * Downsamples into a target index that already exists and records {@code recordedShards} as completed.
+     *
+     * @return the listener of the request, that has been completed
+     */
+    private PlainActionFuture<AcknowledgedResponse> downsampleWithRecordedShards(Set<Integer> recordedShards) {
+        final Set<Integer> completedShards = recordedShards;
+        final IndexMetadata sourceIndexMetadata = createSourceIndexMetadata(sourceIndex, primaryShards, replicaShards).build();
+        IndexMetadata targetIndexMetadata = createTargetIndexMetadata(targetIndex, primaryShards, replicaShards, false).build();
+        for (int shardId : completedShards) {
+            targetIndexMetadata = DownsampleCompletedShards.withCompletedShard(targetIndexMetadata, shardId);
+        }
+        var projectMetadata = ProjectMetadata.builder(projectId).put(sourceIndexMetadata, false).build();
+        var clusterState = ClusterState.builder(ClusterState.EMPTY_STATE)
+            .putProjectMetadata(projectMetadata)
+            .blocks(ClusterBlocks.builder().addIndexBlock(projectId, sourceIndex, IndexMetadata.INDEX_WRITE_BLOCK))
+            .build();
+        when(projectResolver.getProjectMetadata(any(ClusterState.class))).thenReturn(projectMetadata);
+        // The target index already exists, with the record of the shards that completed during a previous request
+        doAnswer(invocation -> {
+            var updateTask = invocation.getArgument(1, TransportDownsampleAction.DownsampleClusterStateUpdateTask.class);
+            updateTask.listener.onFailure(new ResourceAlreadyExistsException(targetIndex));
+            return null;
+        }).when(taskQueue).submitTask(startsWith("create-downsample-index"), any(), any());
+        final IndexMetadata existingTarget = targetIndexMetadata;
+        when(clusterService.state()).thenReturn(
+            ClusterState.builder(clusterState)
+                .putProjectMetadata(ProjectMetadata.builder(projectMetadata).put(existingTarget, false))
+                .build()
+        );
+        assertSuccessfulUpdateDownsampleStatus(clusterService.state());
+
+        Answer<Void> mockPersistentTask = invocation -> {
+            ActionListener<PersistentTasksCustomMetadata.PersistentTask<?>> listener = invocation.getArgument(4);
+            PersistentTasksCustomMetadata.PersistentTask<?> startedTask = mock(PersistentTasksCustomMetadata.PersistentTask.class);
+            when(startedTask.getId()).thenReturn(randomAlphaOfLength(10));
+            when(startedTask.getState()).thenReturn(new DownsampleShardPersistentTaskState(DownsampleShardIndexerStatus.COMPLETED, null));
+            listener.onResponse(startedTask);
+            return null;
+        };
+        doAnswer(mockPersistentTask).when(persistentTaskService).sendStartRequest(anyString(), anyString(), any(), any(), any());
+        doAnswer(mockPersistentTask).when(persistentTaskService).waitForPersistentTaskCondition(any(), anyString(), any(), any(), any());
+        doAnswer(invocation -> {
+            var listener = invocation.getArgument(1, TransportDownsampleAction.UpdateDownsampleIndexSettingsActionListener.class);
+            listener.onResponse(AcknowledgedResponse.TRUE);
+            return null;
+        }).when(indicesAdminClient).updateSettings(any(), any());
+
+        PlainActionFuture<AcknowledgedResponse> listener = new PlainActionFuture<>();
+        action.masterOperation(
+            task,
+            new DownsampleAction.Request(
+                ESTestCase.TEST_REQUEST_TIMEOUT,
+                sourceIndex,
+                targetIndex,
+                TimeValue.ONE_HOUR,
+                new DownsampleConfig(new DateHistogramInterval("5m"), randomSamplingMethod())
+            ),
+            clusterState,
+            listener
+        );
+        return listener;
+    }
+
     public void testDownsamplingWithShortCircuitDuringCreation() {
         var projectMetadata = ProjectMetadata.builder(projectId)
             .put(createSourceIndexMetadata(sourceIndex, primaryShards, replicaShards))
@@ -348,6 +456,8 @@ public class TransportDownsampleActionTests extends ESTestCase {
             .build();
 
         when(projectResolver.getProjectMetadata(any(ClusterState.class))).thenReturn(projectMetadata);
+        // The coordinator reads the target index metadata from the cluster service when it starts the shard-level tasks
+        when(clusterService.state()).thenReturn(clusterState);
 
         Answer<Void> mockPersistentTask = invocation -> {
             ActionListener<PersistentTasksCustomMetadata.PersistentTask<?>> listener = invocation.getArgument(4);
@@ -506,17 +616,29 @@ public class TransportDownsampleActionTests extends ESTestCase {
     }
 
     private IndexMetadata.Builder createTargetIndexMetadata(String targetIndex, int primaryShards, int replicaShards) {
-        return IndexMetadata.builder(targetIndex)
-            .settings(
-                indexSettings(IndexVersion.current(), randomUUID(), primaryShards, replicaShards).put(
-                    IndexSettings.MODE.getKey(),
-                    IndexMode.TIME_SERIES.getName()
-                )
-                    .put("index.routing_path", "dimensions")
-                    .put(IndexMetadata.INDEX_DOWNSAMPLE_STATUS.getKey(), IndexMetadata.DownsampleTaskStatus.STARTED)
-                    .put(IndexMetadata.SETTING_BLOCKS_WRITE, true)
-            );
+        return createTargetIndexMetadata(targetIndex, primaryShards, replicaShards, true);
+    }
 
+    /**
+     * @param writeBlocked a write block on the target index is the signal that all the shards completed, so a target that is still
+     *                     being downsampled has none
+     */
+    private IndexMetadata.Builder createTargetIndexMetadata(
+        String targetIndex,
+        int primaryShards,
+        int replicaShards,
+        boolean writeBlocked
+    ) {
+        final Settings.Builder settings = indexSettings(IndexVersion.current(), randomUUID(), primaryShards, replicaShards).put(
+            IndexSettings.MODE.getKey(),
+            IndexMode.TIME_SERIES.getName()
+        )
+            .put("index.routing_path", "dimensions")
+            .put(IndexMetadata.INDEX_DOWNSAMPLE_STATUS.getKey(), IndexMetadata.DownsampleTaskStatus.STARTED);
+        if (writeBlocked) {
+            settings.put(IndexMetadata.SETTING_BLOCKS_WRITE, true);
+        }
+        return IndexMetadata.builder(targetIndex).settings(settings);
     }
 
     public void testCopyIndexMetadata() {
