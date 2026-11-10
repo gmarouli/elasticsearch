@@ -299,6 +299,15 @@ public class DownsampleDisruptionPlugin extends Plugin implements ActionPlugin {
         return new OrdinalMatcher(matcher, ordinals);
     }
 
+    /**
+     * Counts the executions that {@code matcher} matches without parking anything, so a rule using it must only
+     * be installed once. It counts the executions of every node, so it is meant for operations that run on a
+     * single node, such as the bulk requests of a single shard-level task.
+     */
+    public static OrdinalMatcher count(BiPredicate<String, ActionRequest> matcher) {
+        return new OrdinalMatcher(matcher, i -> false);
+    }
+
     public static final class OrdinalMatcher implements BiPredicate<String, ActionRequest> {
         private final BiPredicate<String, ActionRequest> matcher;
         private final IntPredicate ordinals;

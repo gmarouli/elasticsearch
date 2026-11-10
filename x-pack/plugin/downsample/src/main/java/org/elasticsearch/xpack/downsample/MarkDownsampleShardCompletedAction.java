@@ -49,8 +49,6 @@ import java.util.Objects;
 public class MarkDownsampleShardCompletedAction extends ActionType<AcknowledgedResponse> {
 
     public static final MarkDownsampleShardCompletedAction INSTANCE = new MarkDownsampleShardCompletedAction();
-    // Not an "internal:" action: the shard task runs it through an origin-setting client, which is only authorized for non-internal
-    // actions.
     public static final String NAME = "cluster:admin/xpack/downsample/shard_completed";
 
     private MarkDownsampleShardCompletedAction() {
@@ -99,14 +97,14 @@ public class MarkDownsampleShardCompletedAction extends ActionType<AcknowledgedR
         }
     }
 
-    public static class TA extends AcknowledgedTransportMasterNodeAction<Request> {
-        private static final Logger logger = LogManager.getLogger(TA.class);
+    public static class TransportAction extends AcknowledgedTransportMasterNodeAction<Request> {
+        private static final Logger logger = LogManager.getLogger(TransportAction.class);
 
         private final ProjectResolver projectResolver;
         private final MasterServiceTaskQueue<DownsampleClusterStateUpdateTask> taskQueue;
 
         @Inject
-        public TA(
+        public TransportAction(
             TransportService transportService,
             ClusterService clusterService,
             ThreadPool threadPool,
@@ -117,7 +115,7 @@ public class MarkDownsampleShardCompletedAction extends ActionType<AcknowledgedR
             this.projectResolver = projectResolver;
             this.taskQueue = clusterService.createTaskQueue(
                 "downsample-shard-completed",
-                Priority.URGENT,
+                Priority.HIGH,
                 TransportDownsampleAction.STATE_UPDATE_TASK_EXECUTOR
             );
         }

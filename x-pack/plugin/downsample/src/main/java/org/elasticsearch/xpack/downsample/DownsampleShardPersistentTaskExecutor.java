@@ -204,11 +204,9 @@ public class DownsampleShardPersistentTaskExecutor extends PersistentTasksExecut
         DownsampleShardTaskParams params,
         BytesRef lastDownsampledTsid
     ) {
-        // A start request that was already in flight when the shard completed can still create a task for it. Downsampling the shard again
-        // would waste work, and it would fail once the target index is read-only, so the task completes right away.
         if (isRecordedAsCompleted(clusterService.state(), params)) {
             LOGGER.info(
-                "Downsampling task [{}] not running, shard [{}] already completed downsampling into [{}]",
+                "Marking downsampling task [{}] as completed, shard [{}] already completed downsampling into [{}]",
                 task.getPersistentTaskId(),
                 params.shardId(),
                 params.downsampleIndex()

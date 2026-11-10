@@ -28,7 +28,6 @@ import org.elasticsearch.logging.LogManager;
 import org.elasticsearch.logging.Logger;
 import org.elasticsearch.persistent.PersistentTasksCustomMetadata;
 import org.elasticsearch.persistent.PersistentTasksService;
-import org.elasticsearch.persistent.StartPersistentTaskAction;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.search.aggregations.bucket.histogram.DateHistogramInterval;
 import org.elasticsearch.test.ESIntegTestCase;
@@ -153,16 +152,15 @@ public class DownsampleResilienceIT extends DownsamplingIntegTestCase {
         // Park only one shard-level task, the others run to completion
         int parkedShardId = randomIntBetween(0, shards - 1);
         BiPredicate<String, ActionRequest> incompleteShard = DownsampleDisruptionPlugin.downsamplingShardTask(SOURCE, parkedShardId);
-        DownsampleDisruptionPlugin.parkAll(incompleteShard);
+        // Also count the start of the shard-level work of every shard, so we can tell when each shard has created its task.
+        final var startedShardCounter = DownsampleDisruptionPlugin.count(DownsampleDisruptionPlugin.downsamplingShardTask(SOURCE));
+        DownsampleDisruptionPlugin.parkAll((action, request) -> {
+            startedShardCounter.test(action, request);
+            return incompleteShard.test(action, request);
+        });
         final ActionFuture<AcknowledgedResponse> first = startDownsample(coordinator, TARGET);
         awaitParked(1);
-        // The other shards have completed once they are recorded in the target index metadata. Only then is it certain that none of them
-        // is still to start its task, which the second request would start again.
-        final Set<Integer> expectedCompleted = IntStream.range(0, shards)
-            .filter(shard -> shard != parkedShardId)
-            .boxed()
-            .collect(Collectors.toSet());
-        assertBusy(() -> assertThat(DownsampleCompletedShards.completedShards(indexMetadata(TARGET)), equalTo(expectedCompleted)));
+        assertBusy(() -> assertThat(startedShardCounter.matched(), equalTo(shards)), 30, TimeUnit.SECONDS);
         // A persistent task is removed when it completes, and so is its running task on the node, so only the parked one is left
         assertBusy(() -> {
             assertThat(shardTasks(), hasSize(1));
@@ -173,11 +171,11 @@ public class DownsampleResilienceIT extends DownsamplingIntegTestCase {
         // We park the start of persistent tasks for the shards that have already completed, the second request should not issue any.
         // This has to be in place before the second request starts, and a single rule has to match all the completed shards.
         DownsampleDisruptionPlugin.parkAll((action, request) -> {
-            if (StartPersistentTaskAction.INSTANCE.name().equals(action)
-                && request instanceof StartPersistentTaskAction.Request start
-                && DownsampleShardTask.TASK_NAME.equals(start.getTaskName())
-                && start.getParams() instanceof DownsampleShardTaskParams params) {
-                return params.shardId().getIndexName().equals(SOURCE) && params.shardId().getId() != parkedShardId;
+            if (DownsampleShardPersistentTaskExecutor.DelegatingAction.NAME.equals(action)
+                && request instanceof DownsampleShardPersistentTaskExecutor.DelegatingAction.Request downsamplingShardRequest) {
+                return downsamplingShardRequest.shards()
+                    .stream()
+                    .anyMatch(shard -> shard.getIndexName().equals(SOURCE) && shard.getId() != parkedShardId);
             }
             return false;
         });
@@ -191,14 +189,15 @@ public class DownsampleResilienceIT extends DownsamplingIntegTestCase {
         DownsampleDisruptionPlugin.releaseParked(incompleteShard);
         assertDownsampleSucceeds(first);
         // The second request should be able to finish without creating any new persistent tasks that would be parked.
+        assertThat(DownsampleDisruptionPlugin.parkedRequests(), empty());
         assertDownsampleSucceeds(second);
         assertDownsampleCompleted(coordinator, TARGET);
     }
 
     /**
-     * A start request that was already in flight when a shard completed lands after the shard completed, so its persistent task is not
-     * there anymore and the request creates a new one, for instance when a coordinator read the cluster state just before the shard
-     * completed. Every shard but one has completed, and the start request is sent for one of the completed shards.
+     * A start request that was already in flight when a shard completed lands after the shard completed, for instance when a
+     * coordinator read the cluster state just before the shard completed. Every shard but one has completed, and the start request
+     * is sent for one of the completed shards.
      * Expected: the new task completes right away without downsampling the shard again, and the downsample index is still complete.
      */
     public void testStartRequestAfterShardCompleted() throws Exception {
