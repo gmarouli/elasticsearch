@@ -20,15 +20,19 @@ import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.action.support.IndicesOptions;
 import org.elasticsearch.action.support.TransportAction;
 import org.elasticsearch.client.internal.Client;
+import org.elasticsearch.client.internal.OriginSettingClient;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.ProjectId;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.routing.IndexShardRoutingTable;
 import org.elasticsearch.cluster.routing.ShardRouting;
+import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.util.concurrent.AbstractRunnable;
 import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.features.FeatureService;
 import org.elasticsearch.index.IndexNotFoundException;
 import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.index.shard.ShardNotFoundException;
@@ -41,6 +45,7 @@ import org.elasticsearch.persistent.PersistentTasksExecutor;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.tasks.TaskId;
 import org.elasticsearch.transport.TransportService;
+import org.elasticsearch.xpack.core.ClientHelper;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardIndexerStatus;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardPersistentTaskState;
 import org.elasticsearch.xpack.core.downsample.DownsampleShardTask;
@@ -190,6 +195,8 @@ public class DownsampleShardPersistentTaskExecutor extends PersistentTasksExecut
 
     static void realNodeOperation(
         Client client,
+        ClusterService clusterService,
+        FeatureService featureService,
         IndicesService indicesService,
         DownsampleMetrics downsampleMetrics,
         DownsampleShardTask task,
@@ -224,7 +231,7 @@ public class DownsampleShardPersistentTaskExecutor extends PersistentTasksExecut
                         initialState
                     );
                     downsampleShardIndexer.execute();
-                    task.markAsCompleted();
+                    recordCompletionAndComplete(client, clusterService, featureService, task, params);
                 } catch (final DownsampleShardIndexerException e) {
                     if (e.isRetriable()) {
                         LOGGER.warn("Downsampling task [" + task.getPersistentTaskId() + " retriable failure [" + e.getMessage() + "]");
@@ -244,6 +251,40 @@ public class DownsampleShardPersistentTaskExecutor extends PersistentTasksExecut
                 }
             }
         });
+    }
+
+    /**
+     * Persist the completion of the downsample shard task to the target index metadata. If the index metadata update fails, a
+     * warning is logged and the task is completed nonetheless.
+     */
+    private static void recordCompletionAndComplete(
+        Client client,
+        ClusterService clusterService,
+        FeatureService featureService,
+        DownsampleShardTask task,
+        DownsampleShardTaskParams params
+    ) {
+        if (featureService.clusterHasFeature(clusterService.state(), DownsampleFeatures.COMPLETED_SHARDS) == false) {
+            task.markAsCompleted();
+            return;
+        }
+        // The action only records a shard id in the target index metadata, so it is not run with the privileges of the user that
+        // started the downsampling.
+        new OriginSettingClient(client, ClientHelper.ROLLUP_ORIGIN).execute(
+            MarkDownsampleShardCompletedAction.INSTANCE,
+            new MarkDownsampleShardCompletedAction.Request(TimeValue.THIRTY_SECONDS, params.downsampleIndex(), params.shardId().id()),
+            ActionListener.wrap(response -> task.markAsCompleted(), e -> {
+                LOGGER.warn(
+                    "Downsampling task ["
+                        + task.getPersistentTaskId()
+                        + "] could not record the completion of shard ["
+                        + params.shardId()
+                        + "]",
+                    e
+                );
+                task.markAsCompleted();
+            })
+        );
     }
 
     private static void markAsFailed(DownsampleShardTask task, Exception e) {
@@ -308,6 +349,8 @@ public class DownsampleShardPersistentTaskExecutor extends PersistentTasksExecut
         public static class TA extends TransportAction<Request, ActionResponse.Empty> {
 
             private final Client client;
+            private final ClusterService clusterService;
+            private final FeatureService featureService;
             private final IndicesService indicesService;
             private final DownsampleMetrics downsampleMetrics;
 
@@ -316,19 +359,32 @@ public class DownsampleShardPersistentTaskExecutor extends PersistentTasksExecut
                 TransportService transportService,
                 ActionFilters actionFilters,
                 Client client,
+                ClusterService clusterService,
+                FeatureService featureService,
                 IndicesService indicesService,
                 DownsampleMetrics downsampleMetrics
             ) {
                 // TODO: consider moving to Downsample.DOWSAMPLE_TASK_THREAD_POOL_NAME and simplify realNodeOperation
                 super(NAME, actionFilters, transportService.getTaskManager(), EsExecutors.DIRECT_EXECUTOR_SERVICE);
                 this.client = client;
+                this.clusterService = clusterService;
+                this.featureService = featureService;
                 this.indicesService = indicesService;
                 this.downsampleMetrics = downsampleMetrics;
             }
 
             @Override
             protected void doExecute(Task t, Request request, ActionListener<ActionResponse.Empty> listener) {
-                realNodeOperation(client, indicesService, downsampleMetrics, request.task, request.params, request.lastDownsampleTsid);
+                realNodeOperation(
+                    client,
+                    clusterService,
+                    featureService,
+                    indicesService,
+                    downsampleMetrics,
+                    request.task,
+                    request.params,
+                    request.lastDownsampleTsid
+                );
                 listener.onResponse(ActionResponse.Empty.INSTANCE);
             }
 
