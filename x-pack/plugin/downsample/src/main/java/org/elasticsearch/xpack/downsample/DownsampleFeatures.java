@@ -24,8 +24,14 @@ public class DownsampleFeatures implements FeatureSpecification {
         "downsample.cumulative_histogram_consecutive_resets_fix"
     );
 
+    /**
+     * Marks the nodes that know {@link MarkDownsampleShardCompletedAction}. A shard-level task only records its completion in the target
+     * index metadata once every node has this feature, otherwise the master might not know the action.
+     */
+    public static final NodeFeature COMPLETED_SHARDS = new NodeFeature("downsample.completed_shards");
+
     @Override
     public Set<NodeFeature> getFeatures() {
-        return Set.of(CUMULATIVE_HISTOGRAM_CONSECUTIVE_RESETS_FIX);
+        return Set.of(CUMULATIVE_HISTOGRAM_CONSECUTIVE_RESETS_FIX, COMPLETED_SHARDS);
     }
 }

@@ -59,6 +59,7 @@ public class Downsample extends Plugin implements ActionPlugin, PersistentTaskPl
     public List<ActionHandler> getActions() {
         return List.of(
             new ActionHandler(DownsampleAction.INSTANCE, TransportDownsampleAction.class),
+            new ActionHandler(MarkDownsampleShardCompletedAction.INSTANCE, MarkDownsampleShardCompletedAction.TA.class),
             new ActionHandler(
                 DownsampleShardPersistentTaskExecutor.DelegatingAction.INSTANCE,
                 DownsampleShardPersistentTaskExecutor.DelegatingAction.TA.class
