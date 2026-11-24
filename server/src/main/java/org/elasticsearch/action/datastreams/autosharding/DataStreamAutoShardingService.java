@@ -184,6 +184,18 @@ public class DataStreamAutoShardingService {
         Setting.Property.NodeScope
     );
 
+    /**
+     * How far back, in terms of "write indices" are we looking when determining the write load of a time series data stream
+     * to make an increase shards recommendation. Every write index that falls within this lookback period is eligible.
+     */
+    public static final Setting<TimeValue> DATA_STREAMS_AUTO_SHARDING_TIME_SERIES_INCREASE_SHARDS_LOOKBACK = Setting.timeSetting(
+        "data_streams.auto_sharding.time_series.increase_shards.lookback",
+        TimeValue.timeValueHours(12),
+        TimeValue.timeValueSeconds(0),
+        Setting.Property.Dynamic,
+        Setting.Property.NodeScope
+    );
+
     private final ClusterService clusterService;
     private final boolean isAutoShardingEnabled;
     private final LongSupplier nowSupplier;
@@ -197,6 +209,7 @@ public class DataStreamAutoShardingService {
     private volatile WriteLoadMetric decreaseShardsMetric;
     private volatile int minNumberOfShards;
     private volatile int timeSeriesMinNumberOfShards;
+    private volatile long timeSeriesIncreaseShardsLookback;
 
     public DataStreamAutoShardingService(Settings settings, ClusterService clusterService, LongSupplier nowSupplier) {
         this(settings, clusterService, nowSupplier, createPeriodicLoggingDecisionConsumer(nowSupplier));
@@ -225,6 +238,7 @@ public class DataStreamAutoShardingService {
         this.decreaseShardsMetric = DATA_STREAMS_AUTO_SHARDING_DECREASE_SHARDS_LOAD_METRIC.get(settings);
         this.minNumberOfShards = DATA_STREAMS_AUTO_SHARDING_MIN_NUMBER_OF_SHARDS.get(settings);
         this.timeSeriesMinNumberOfShards = DATA_STREAMS_AUTO_SHARDING_TIME_SERIES_MIN_NUMBER_OF_SHARDS.get(settings);
+        this.timeSeriesIncreaseShardsLookback = DATA_STREAMS_AUTO_SHARDING_TIME_SERIES_INCREASE_SHARDS_LOOKBACK.get(settings).millis();
         this.nowSupplier = nowSupplier;
         this.decisionLogger = decisionLogger;
     }
@@ -248,6 +262,11 @@ public class DataStreamAutoShardingService {
             .addSettingsUpdateConsumer(
                 DATA_STREAMS_AUTO_SHARDING_TIME_SERIES_MIN_NUMBER_OF_SHARDS,
                 this::updateTimeSeriesMinNumberOfShards
+            );
+        clusterService.getClusterSettings()
+            .addSettingsUpdateConsumer(
+                DATA_STREAMS_AUTO_SHARDING_TIME_SERIES_INCREASE_SHARDS_LOOKBACK,
+                this::updateTimeSeriesIncreaseShardsLookback
             );
     }
 
@@ -804,6 +823,10 @@ public class DataStreamAutoShardingService {
 
     private void updateTimeSeriesMinNumberOfShards(int newTimeSeriesMinNumberOfShards) {
         this.timeSeriesMinNumberOfShards = newTimeSeriesMinNumberOfShards;
+    }
+
+    private void updateTimeSeriesIncreaseShardsLookback(TimeValue newTimeSeriesIncreaseShardsLookback) {
+        this.timeSeriesIncreaseShardsLookback = newTimeSeriesIncreaseShardsLookback.millis();
     }
 
     private static Double optionalDoubleToNullable(OptionalDouble optional) {
