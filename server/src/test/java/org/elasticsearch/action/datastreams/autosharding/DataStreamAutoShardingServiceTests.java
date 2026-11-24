@@ -41,6 +41,7 @@ import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexMode;
+import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.index.IndexVersion;
 import org.elasticsearch.index.shard.IndexingStats;
 import org.elasticsearch.index.shard.ShardId;
@@ -50,7 +51,9 @@ import org.elasticsearch.threadpool.ThreadPool;
 import org.junit.After;
 import org.junit.Before;
 
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -71,10 +74,12 @@ import static org.elasticsearch.test.ClusterServiceUtils.createClusterService;
 import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -153,14 +158,20 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             AutoShardingResult autoShardingResult = disabledAutoshardingService.calculate(
                 state.projectState(projectId),
                 dataStream,
-                mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 9999.0, 2.0)
+                mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 9999.0, 2.0),
+                System::currentTimeMillis
             );
             assertThat(autoShardingResult, is(NOT_APPLICABLE_RESULT));
         }
 
         {
             // null stats passed
-            AutoShardingResult autoShardingResult = service.calculate(state.projectState(projectId), dataStream, null);
+            AutoShardingResult autoShardingResult = service.calculate(
+                state.projectState(projectId),
+                dataStream,
+                null,
+                System::currentTimeMillis
+            );
             assertThat(autoShardingResult, is(NOT_APPLICABLE_RESULT));
         }
     }
@@ -187,7 +198,8 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 9999.0, 2.5)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 9999.0, 2.5),
+            System::currentTimeMillis
         );
         assertThat(autoShardingResult.type(), is(INCREASE_SHARDS));
         // no pre-existing scaling event so the cool down must be zero
@@ -226,7 +238,8 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 9999.0, 2.5)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 9999.0, 2.5),
+            System::currentTimeMillis
         );
         assertThat(autoShardingResult.type(), is(COOLDOWN_PREVENTED_INCREASE));
         // no pre-existing scaling event so the cool down must be zero
@@ -264,7 +277,8 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 9999.0, 2.5)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 9999.0, 2.5),
+            System::currentTimeMillis
         );
         assertThat(autoShardingResult.type(), is(INCREASE_SHARDS));
         // no pre-existing scaling event so the cool down must be zero
@@ -295,13 +309,398 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             AutoShardingResult autoShardingResult = service.calculate(
                 state.projectState(projectId),
                 dataStream,
-                mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 2.5, 9999.0)
+                mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 2.5, 9999.0),
+                System::currentTimeMillis
             );
             assertThat(autoShardingResult.type(), is(INCREASE_SHARDS));
             // no pre-existing scaling event so the cool down must be zero
             assertThat(autoShardingResult.coolDownRemaining(), is(TimeValue.ZERO));
             assertThat(autoShardingResult.targetNumberOfShards(), is(3));
         });
+    }
+
+    /**
+     * A time series data stream can still receive documents in the backing indices that precede the write index, as long as their time
+     * series range ends within the increase lookback. So the highest load among those indices drives the increase, even when the write
+     * index itself is lightly loaded.
+     */
+    public void testCalculateIncreaseShardingRecommendations_timeSeriesUsesLoadOfIndexWithinLookback() {
+        var projectId = randomProjectIdOrDefault();
+        ProjectMetadata.Builder builder = ProjectMetadata.builder(projectId);
+        // The previous index (generation 4) ends when the write index starts, an hour ago, so it is within the lookback. The older
+        // indices ended at least a day ago, so they are not.
+        DataStream dataStream = createDataStream(
+            builder,
+            dataStreamName,
+            1,
+            now,
+            List.of(
+                now - TimeValue.timeValueDays(4).millis(),
+                now - TimeValue.timeValueDays(3).millis(),
+                now - TimeValue.timeValueDays(2).millis(),
+                now - TimeValue.timeValueDays(1).millis(),
+                now - TimeValue.timeValueHours(1).millis()
+            ),
+            Stream.generate(() -> getWriteLoad(1, 9999.0, 9999.0, 9999.0)).limit(4).toList(), // not used for increase calculation
+            null,
+            IndexMode.TIME_SERIES
+        );
+        builder.put(dataStream);
+        ClusterState state = ClusterState.builder(ClusterName.DEFAULT)
+            .nodes(DiscoveryNodes.builder().add(DiscoveryNodeUtils.create("n1")).add(DiscoveryNodeUtils.create("n2")))
+            .putProjectMetadata(builder.build())
+            .build();
+        String writeIndex = dataStream.getWriteIndex().getName();
+        String previousIndex = dataStream.getIndices().get(3).getName();
+        String oldIndex = dataStream.getIndices().get(2).getName();
+
+        AutoShardingResult autoShardingResult = service.calculate(
+            state.projectState(projectId),
+            dataStream,
+            mockStatsResponse(
+                Map.of(
+                    writeIndex,
+                    new ResponseStatsSetup(1, 0.1, 0.1, 0.1),
+                    previousIndex,
+                    new ResponseStatsSetup(1, 2.5, 2.5, 2.5),
+                    // the highest load, but outside the lookback so it must be ignored
+                    oldIndex,
+                    new ResponseStatsSetup(1, 20.0, 20.0, 20.0)
+                )
+            ),
+            () -> now
+        );
+
+        assertThat(autoShardingResult.type(), is(INCREASE_SHARDS));
+        assertThat(autoShardingResult.coolDownRemaining(), is(TimeValue.ZERO));
+        // a load of 2.5 results in 3 shards
+        assertThat(autoShardingResult.targetNumberOfShards(), is(3));
+        var maxLoad = decisionsLogged.getLast().increaseCalculation().maxLoadWithinIncreaseLookahead();
+        assertThat(maxLoad.previousIndexWithMaxLoad(), is(previousIndex));
+    }
+
+    /**
+     * Contrast to {@link #testCalculateIncreaseShardingRecommendations_timeSeriesUsesLoadOfIndexWithinLookback}: the same indices and
+     * stats on a standard data stream must only consider the write index, because only the write index receives documents.
+     */
+    public void testCalculateIncreaseShardingRecommendations_standardDataStreamOnlyUsesWriteIndex() {
+        var projectId = randomProjectIdOrDefault();
+        ProjectMetadata.Builder builder = ProjectMetadata.builder(projectId);
+        DataStream dataStream = createDataStream(
+            builder,
+            dataStreamName,
+            1,
+            now,
+            List.of(
+                now - TimeValue.timeValueDays(4).millis(),
+                now - TimeValue.timeValueDays(3).millis(),
+                now - TimeValue.timeValueDays(2).millis(),
+                now - TimeValue.timeValueDays(1).millis(),
+                now - TimeValue.timeValueHours(1).millis()
+            ),
+            Stream.generate(() -> getWriteLoad(1, 9999.0, 9999.0, 9999.0)).limit(4).toList(), // not used for increase calculation
+            null,
+            null
+        );
+        builder.put(dataStream);
+        ClusterState state = ClusterState.builder(ClusterName.DEFAULT)
+            .nodes(DiscoveryNodes.builder().add(DiscoveryNodeUtils.create("n1")).add(DiscoveryNodeUtils.create("n2")))
+            .putProjectMetadata(builder.build())
+            .build();
+        String writeIndex = dataStream.getWriteIndex().getName();
+        String previousIndex = dataStream.getIndices().get(3).getName();
+
+        AutoShardingResult autoShardingResult = service.calculate(
+            state.projectState(projectId),
+            dataStream,
+            mockStatsResponse(
+                Map.of(
+                    writeIndex,
+                    new ResponseStatsSetup(1, 0.1, 0.1, 0.1),
+                    // a high load that would result in an increase if this index was considered, but it is not the write index
+                    previousIndex,
+                    new ResponseStatsSetup(1, 2.5, 2.5, 2.5)
+                )
+            ),
+            () -> now
+        );
+
+        assertThat(autoShardingResult.type(), is(NO_CHANGE_REQUIRED));
+        assertThat(autoShardingResult.targetNumberOfShards(), is(1));
+        var maxLoad = decisionsLogged.getLast().increaseCalculation().maxLoadWithinIncreaseLookahead();
+        assertThat(maxLoad.previousIndexWithMaxLoad(), is(writeIndex));
+    }
+
+    /**
+     * A time series index whose time series range ended before the start of the lookback cannot receive documents anymore, so its load
+     * must not influence the increase calculation.
+     */
+    public void testCalculateIncreaseShardingRecommendations_timeSeriesIgnoresIndicesOutsideLookback() {
+        var projectId = randomProjectIdOrDefault();
+        ProjectMetadata.Builder builder = ProjectMetadata.builder(projectId);
+        // The write index started 20 hours ago, so the previous index (generation 4) ended before the start of the 12 hours lookback.
+        DataStream dataStream = createDataStream(
+            builder,
+            dataStreamName,
+            1,
+            now,
+            List.of(
+                now - TimeValue.timeValueDays(4).millis(),
+                now - TimeValue.timeValueDays(3).millis(),
+                now - TimeValue.timeValueDays(2).millis(),
+                now - TimeValue.timeValueDays(1).millis(),
+                now - TimeValue.timeValueHours(20).millis()
+            ),
+            Stream.generate(() -> getWriteLoad(1, 9999.0, 9999.0, 9999.0)).limit(4).toList(), // not used for increase calculation
+            null,
+            IndexMode.TIME_SERIES
+        );
+        builder.put(dataStream);
+        ClusterState state = ClusterState.builder(ClusterName.DEFAULT)
+            .nodes(DiscoveryNodes.builder().add(DiscoveryNodeUtils.create("n1")).add(DiscoveryNodeUtils.create("n2")))
+            .putProjectMetadata(builder.build())
+            .build();
+        String writeIndex = dataStream.getWriteIndex().getName();
+        String previousIndex = dataStream.getIndices().get(3).getName();
+
+        AutoShardingResult autoShardingResult = service.calculate(
+            state.projectState(projectId),
+            dataStream,
+            mockStatsResponse(
+                Map.of(
+                    writeIndex,
+                    new ResponseStatsSetup(1, 0.1, 0.1, 0.1),
+                    // a high load that would result in an increase if this index was considered, but it is outside the lookback
+                    previousIndex,
+                    new ResponseStatsSetup(1, 2.5, 2.5, 2.5)
+                )
+            ),
+            () -> now
+        );
+
+        assertThat(autoShardingResult.type(), is(NO_CHANGE_REQUIRED));
+        assertThat(autoShardingResult.targetNumberOfShards(), is(1));
+        var maxLoad = decisionsLogged.getLast().increaseCalculation().maxLoadWithinIncreaseLookahead();
+        assertThat(maxLoad.previousIndexWithMaxLoad(), is(writeIndex));
+    }
+
+    /**
+     * An index with a write block cannot receive documents anymore, even if its time series range is still within the lookback, so its
+     * load must not influence the increase calculation.
+     */
+    public void testCalculateIncreaseShardingRecommendations_timeSeriesIgnoresWriteBlockedIndices() {
+        var projectId = randomProjectIdOrDefault();
+        ProjectMetadata.Builder builder = ProjectMetadata.builder(projectId);
+        // The previous index (generation 4) ends an hour ago, so it is within the lookback.
+        DataStream dataStream = createDataStream(
+            builder,
+            dataStreamName,
+            1,
+            now,
+            List.of(
+                now - TimeValue.timeValueDays(4).millis(),
+                now - TimeValue.timeValueDays(3).millis(),
+                now - TimeValue.timeValueDays(2).millis(),
+                now - TimeValue.timeValueDays(1).millis(),
+                now - TimeValue.timeValueHours(1).millis()
+            ),
+            Stream.generate(() -> getWriteLoad(1, 9999.0, 9999.0, 9999.0)).limit(4).toList(), // not used for increase calculation
+            null,
+            IndexMode.TIME_SERIES
+        );
+        builder.put(dataStream);
+        String writeIndex = dataStream.getWriteIndex().getName();
+        String previousIndex = dataStream.getIndices().get(3).getName();
+        // block writes to the previous index
+        IndexMetadata previousIndexMetadata = builder.get(previousIndex);
+        builder.put(
+            IndexMetadata.builder(previousIndexMetadata)
+                .settings(Settings.builder().put(previousIndexMetadata.getSettings()).put(IndexMetadata.SETTING_BLOCKS_WRITE, true))
+                .build(),
+            false
+        );
+        ClusterState state = ClusterState.builder(ClusterName.DEFAULT)
+            .nodes(DiscoveryNodes.builder().add(DiscoveryNodeUtils.create("n1")).add(DiscoveryNodeUtils.create("n2")))
+            .putProjectMetadata(builder.build())
+            .build();
+
+        AutoShardingResult autoShardingResult = service.calculate(
+            state.projectState(projectId),
+            dataStream,
+            mockStatsResponse(
+                Map.of(
+                    writeIndex,
+                    new ResponseStatsSetup(1, 0.1, 0.1, 0.1),
+                    // a high load that would result in an increase if this index was considered, but it is write blocked
+                    previousIndex,
+                    new ResponseStatsSetup(1, 2.5, 2.5, 2.5)
+                )
+            ),
+            () -> now
+        );
+
+        assertThat(autoShardingResult.type(), is(NO_CHANGE_REQUIRED));
+        assertThat(autoShardingResult.targetNumberOfShards(), is(1));
+        var maxLoad = decisionsLogged.getLast().increaseCalculation().maxLoadWithinIncreaseLookahead();
+        assertThat(maxLoad.previousIndexWithMaxLoad(), is(writeIndex));
+    }
+
+    /**
+     * When a data stream is migrated to time series, its existing backing indices do not have a time series range. These indices
+     * can only be the previous write indices, so they cannot receive documents anymore and their load must not influence the
+     * increase calculation.
+     */
+    public void testCalculateIncreaseShardingRecommendations_timeSeriesIgnoresIndicesWithoutTimeSeriesRange() {
+        var projectId = randomProjectIdOrDefault();
+        ProjectMetadata.Builder builder = ProjectMetadata.builder(projectId);
+        // The backing indices are created as standard indices and the data stream is then migrated to time series
+        DataStream standardDataStream = createDataStream(
+            builder,
+            dataStreamName,
+            1,
+            now,
+            List.of(
+                now - TimeValue.timeValueDays(4).millis(),
+                now - TimeValue.timeValueDays(3).millis(),
+                now - TimeValue.timeValueDays(2).millis(),
+                now - TimeValue.timeValueDays(1).millis(),
+                now - TimeValue.timeValueHours(1).millis()
+            ),
+            Stream.generate(() -> getWriteLoad(1, 9999.0, 9999.0, 9999.0)).limit(4).toList(), // not used for increase calculation
+            null,
+            null
+        );
+        DataStream dataStream = standardDataStream.copy().setIndexMode(IndexMode.TIME_SERIES).build();
+        builder.put(dataStream);
+        ClusterState state = ClusterState.builder(ClusterName.DEFAULT)
+            .nodes(DiscoveryNodes.builder().add(DiscoveryNodeUtils.create("n1")).add(DiscoveryNodeUtils.create("n2")))
+            .putProjectMetadata(builder.build())
+            .build();
+        String writeIndex = dataStream.getWriteIndex().getName();
+        String previousIndex = dataStream.getIndices().get(3).getName();
+
+        AutoShardingResult autoShardingResult = service.calculate(
+            state.projectState(projectId),
+            dataStream,
+            mockStatsResponse(
+                Map.of(
+                    writeIndex,
+                    new ResponseStatsSetup(1, 0.1, 0.1, 0.1),
+                    // a high load that would result in an increase if this index was considered, but it has no time series range
+                    previousIndex,
+                    new ResponseStatsSetup(1, 2.5, 2.5, 2.5)
+                )
+            ),
+            () -> now
+        );
+
+        assertThat(autoShardingResult.type(), is(NO_CHANGE_REQUIRED));
+        assertThat(autoShardingResult.targetNumberOfShards(), is(1));
+        var maxLoad = decisionsLogged.getLast().increaseCalculation().maxLoadWithinIncreaseLookahead();
+        assertThat(maxLoad.previousIndexWithMaxLoad(), is(writeIndex));
+    }
+
+    /**
+     * The lookback is a dynamic cluster setting, so updating it must change which indices are considered without recreating the service.
+     */
+    public void testCalculateIncreaseShardingRecommendations_timeSeriesLookbackIsDynamic() {
+        var projectId = randomProjectIdOrDefault();
+        ProjectMetadata.Builder builder = ProjectMetadata.builder(projectId);
+        // The previous index (generation 4) ends an hour ago, so it is within the default lookback of 12 hours.
+        DataStream dataStream = createDataStream(
+            builder,
+            dataStreamName,
+            1,
+            now,
+            List.of(
+                now - TimeValue.timeValueDays(4).millis(),
+                now - TimeValue.timeValueDays(3).millis(),
+                now - TimeValue.timeValueDays(2).millis(),
+                now - TimeValue.timeValueDays(1).millis(),
+                now - TimeValue.timeValueHours(1).millis()
+            ),
+            Stream.generate(() -> getWriteLoad(1, 9999.0, 9999.0, 9999.0)).limit(4).toList(), // not used for increase calculation
+            null,
+            IndexMode.TIME_SERIES
+        );
+        builder.put(dataStream);
+        ClusterState state = ClusterState.builder(ClusterName.DEFAULT)
+            .nodes(DiscoveryNodes.builder().add(DiscoveryNodeUtils.create("n1")).add(DiscoveryNodeUtils.create("n2")))
+            .putProjectMetadata(builder.build())
+            .build();
+        String writeIndex = dataStream.getWriteIndex().getName();
+        String previousIndex = dataStream.getIndices().get(3).getName();
+        IndicesStatsResponse statsResponse = mockStatsResponse(
+            Map.of(writeIndex, new ResponseStatsSetup(1, 0.1, 0.1, 0.1), previousIndex, new ResponseStatsSetup(1, 2.5, 2.5, 2.5))
+        );
+
+        // with the default lookback the previous index is considered
+        AutoShardingResult defaultLookbackResult = service.calculate(state.projectState(projectId), dataStream, statsResponse, () -> now);
+        assertThat(defaultLookbackResult.type(), is(INCREASE_SHARDS));
+        assertThat(defaultLookbackResult.targetNumberOfShards(), is(3));
+
+        // with a lookback shorter than the time since the previous index ended, it is not
+        clusterSettings.applySettings(
+            Settings.builder()
+                .put(DataStreamAutoShardingService.DATA_STREAMS_AUTO_SHARDING_TIME_SERIES_INCREASE_SHARDS_LOOKBACK.getKey(), "30m")
+                .build()
+        );
+        AutoShardingResult shortLookbackResult = service.calculate(state.projectState(projectId), dataStream, statsResponse, () -> now);
+        assertThat(shortLookbackResult.type(), is(NO_CHANGE_REQUIRED));
+        assertThat(shortLookbackResult.targetNumberOfShards(), is(1));
+
+        // and restoring the lookback makes the previous index relevant again
+        clusterSettings.applySettings(Settings.EMPTY);
+        AutoShardingResult restoredLookbackResult = service.calculate(state.projectState(projectId), dataStream, statsResponse, () -> now);
+        assertThat(restoredLookbackResult.type(), is(INCREASE_SHARDS));
+        assertThat(restoredLookbackResult.targetNumberOfShards(), is(3));
+    }
+
+    /**
+     * The decision log is the main way to understand a recommendation, so for a time series data stream it must say which index the
+     * load that drove the increase calculation came from.
+     */
+    public void testCalculateIncreaseShardingRecommendations_timeSeriesDecisionDescribesIndexWithMaxLoad() {
+        var projectId = randomProjectIdOrDefault();
+        ProjectMetadata.Builder builder = ProjectMetadata.builder(projectId);
+        DataStream dataStream = createDataStream(
+            builder,
+            dataStreamName,
+            1,
+            now,
+            List.of(
+                now - TimeValue.timeValueDays(4).millis(),
+                now - TimeValue.timeValueDays(3).millis(),
+                now - TimeValue.timeValueDays(2).millis(),
+                now - TimeValue.timeValueDays(1).millis(),
+                now - TimeValue.timeValueHours(1).millis()
+            ),
+            Stream.generate(() -> getWriteLoad(1, 9999.0, 9999.0, 9999.0)).limit(4).toList(), // not used for increase calculation
+            null,
+            IndexMode.TIME_SERIES
+        );
+        builder.put(dataStream);
+        ClusterState state = ClusterState.builder(ClusterName.DEFAULT)
+            .nodes(DiscoveryNodes.builder().add(DiscoveryNodeUtils.create("n1")).add(DiscoveryNodeUtils.create("n2")))
+            .putProjectMetadata(builder.build())
+            .build();
+        String writeIndex = dataStream.getWriteIndex().getName();
+        String previousIndex = dataStream.getIndices().get(3).getName();
+
+        service.calculate(
+            state.projectState(projectId),
+            dataStream,
+            mockStatsResponse(
+                Map.of(writeIndex, new ResponseStatsSetup(1, 0.1, 0.1, 0.1), previousIndex, new ResponseStatsSetup(1, 2.5, 2.5, 2.5))
+            ),
+            () -> now
+        );
+
+        String description = decisionsLogged.getLast().toString();
+        assertThat(description, containsString("using PEAK load 2.50000 for " + previousIndex));
+        // the loads of all the indices that were taken into account are reported
+        assertThat(description, containsString(writeIndex + "=all-time/recent/peak loads"));
+        assertThat(description, containsString(previousIndex + "=all-time/recent/peak loads"));
     }
 
     public void testCalculateIncreaseShardingRecommendations_usingAllTimeWriteLoad() {
@@ -327,7 +726,8 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             AutoShardingResult autoShardingResult = service.calculate(
                 state.projectState(projectId),
                 dataStream,
-                mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 2.5, 9999.0, 9999.0)
+                mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 2.5, 9999.0, 9999.0),
+                System::currentTimeMillis
             );
             assertThat(autoShardingResult.type(), is(INCREASE_SHARDS));
             // no pre-existing scaling event so the cool down must be zero
@@ -360,7 +760,8 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3),
+            System::currentTimeMillis
         );
         // the cooldown period for the decrease shards event hasn't lapsed since the data stream was created
         assertThat(autoShardingResult.type(), is(COOLDOWN_PREVENTED_DECREASE));
@@ -397,7 +798,8 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3),
+            System::currentTimeMillis
         );
         assertThat(autoShardingResult.type(), is(DECREASE_SHARDS));
         assertThat(autoShardingResult.targetNumberOfShards(), is(1));
@@ -441,7 +843,8 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3),
+            System::currentTimeMillis
         );
         assertThat(autoShardingResult.type(), is(DECREASE_SHARDS));
         assertThat(autoShardingResult.targetNumberOfShards(), is(1));
@@ -483,7 +886,8 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3),
+            System::currentTimeMillis
         );
         assertThat(autoShardingResult.type(), is(COOLDOWN_PREVENTED_DECREASE));
         assertThat(autoShardingResult.targetNumberOfShards(), is(1));
@@ -520,11 +924,112 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 4.0 / 3)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 4.0 / 3),
+            System::currentTimeMillis
         );
         assertThat(autoShardingResult.type(), is(NO_CHANGE_REQUIRED));
         assertThat(autoShardingResult.targetNumberOfShards(), is(3));
         assertThat(autoShardingResult.coolDownRemaining(), is(TimeValue.ZERO));
+    }
+
+    /**
+     * A time series index within the increase lookback can still be receiving documents, so its current load can be higher than the load
+     * recorded in its metadata when it was rolled over. The decrease calculation must take that current load into account, otherwise
+     * we could decrease the shards just before they are needed again.
+     */
+    public void testCalculateDecreaseShardingRecommendations_timeSeriesUsesCurrentLoadOfIndexWithinLookback() {
+        var projectId = randomProjectIdOrDefault();
+        ProjectMetadata.Builder builder = ProjectMetadata.builder(projectId);
+        // 3 shards, the previous indices recorded a peak load of 1 across all their shards, i.e. enough for a single shard.
+        // The previous index (generation 4) ended a second ago, so it is within the increase lookback.
+        DataStream dataStream = createOldLowLoadDataStream(builder, dataStreamName, 3, IndexMode.TIME_SERIES);
+        builder.put(dataStream);
+        ClusterState state = ClusterState.builder(ClusterName.DEFAULT)
+            .nodes(DiscoveryNodes.builder().add(DiscoveryNodeUtils.create("n1")).add(DiscoveryNodeUtils.create("n2")))
+            .putProjectMetadata(builder.build())
+            .build();
+        String writeIndex = dataStream.getWriteIndex().getName();
+        String previousIndex = dataStream.getIndices().get(3).getName();
+        var lowLoad = new ResponseStatsSetup(3, 9999.0, 9999.0, 1.0 / 3);
+
+        // Control: the previous index does not report a higher current load than the one recorded, so the shards can be decreased
+        AutoShardingResult controlResult = service.calculate(
+            state.projectState(projectId),
+            dataStream,
+            mockStatsResponse(Map.of(writeIndex, lowLoad, previousIndex, lowLoad)),
+            () -> now
+        );
+        assertThat(controlResult.type(), is(DECREASE_SHARDS));
+        assertThat(controlResult.targetNumberOfShards(), is(1));
+
+        // The previous index currently has a peak load of 2.5 across all its shards, which needs 3 shards
+        AutoShardingResult autoShardingResult = service.calculate(
+            state.projectState(projectId),
+            dataStream,
+            mockStatsResponse(Map.of(writeIndex, lowLoad, previousIndex, new ResponseStatsSetup(3, 9999.0, 9999.0, 2.5 / 3))),
+            () -> now
+        );
+        assertThat(autoShardingResult.type(), is(NO_CHANGE_REQUIRED));
+        assertThat(autoShardingResult.targetNumberOfShards(), is(3));
+        var maxLoad = decisionsLogged.getLast().decreaseCalculation().maxLoadWithinCooldown();
+        assertThat(maxLoad.load(), closeTo(2.5, 1.0e-8));
+        assertThat(maxLoad.previousIndexWithMaxLoad(), is(previousIndex));
+    }
+
+    /**
+     * Complements {@link #testCalculateDecreaseShardingRecommendations_timeSeriesUsesCurrentLoadOfIndexWithinLookback}: the current load
+     * of a time series index within the lookback must not hide a higher load that was recorded in its metadata, the highest of the two
+     * is the one that counts.
+     */
+    public void testCalculateDecreaseShardingRecommendations_timeSeriesUsesRecordedLoadWhenHigherThanCurrentLoad() {
+        var projectId = randomProjectIdOrDefault();
+        ProjectMetadata.Builder builder = ProjectMetadata.builder(projectId);
+        // 3 shards, the previous index (generation 4) ended a second ago so it is within the increase lookback. It recorded a peak load
+        // of 2.5 across all its shards, which needs 3 shards, while the older indices recorded a load that needs a single shard.
+        List<IndexWriteLoad> recordedLoads = List.of(
+            getWriteLoad(3, 9999.0, 9999.0, 1.0 / 3),
+            getWriteLoad(3, 9999.0, 9999.0, 1.0 / 3),
+            getWriteLoad(3, 9999.0, 9999.0, 1.0 / 3),
+            getWriteLoad(3, 9999.0, 9999.0, 2.5 / 3)
+        );
+        DataStream dataStream = createDataStream(
+            builder,
+            dataStreamName,
+            3,
+            now,
+            List.of(
+                now - TimeValue.timeValueDays(21).getMillis(),
+                now - TimeValue.timeValueDays(15).getMillis(),
+                now - TimeValue.timeValueDays(4).getMillis(),
+                now - TimeValue.timeValueDays(2).getMillis(),
+                now - 1000
+            ),
+            recordedLoads,
+            null,
+            IndexMode.TIME_SERIES
+        );
+        builder.put(dataStream);
+        ClusterState state = ClusterState.builder(ClusterName.DEFAULT)
+            .nodes(DiscoveryNodes.builder().add(DiscoveryNodeUtils.create("n1")).add(DiscoveryNodeUtils.create("n2")))
+            .putProjectMetadata(builder.build())
+            .build();
+        String writeIndex = dataStream.getWriteIndex().getName();
+        String previousIndex = dataStream.getIndices().get(3).getName();
+        var lowLoad = new ResponseStatsSetup(3, 9999.0, 9999.0, 1.0 / 3);
+
+        // the current load of the previous index is lower than the recorded one
+        AutoShardingResult autoShardingResult = service.calculate(
+            state.projectState(projectId),
+            dataStream,
+            mockStatsResponse(Map.of(writeIndex, lowLoad, previousIndex, lowLoad)),
+            () -> now
+        );
+
+        assertThat(autoShardingResult.type(), is(NO_CHANGE_REQUIRED));
+        assertThat(autoShardingResult.targetNumberOfShards(), is(3));
+        var maxLoad = decisionsLogged.getLast().decreaseCalculation().maxLoadWithinCooldown();
+        assertThat(maxLoad.load(), closeTo(2.5, 1.0e-8));
+        assertThat(maxLoad.previousIndexWithMaxLoad(), is(previousIndex));
     }
 
     public void testCalculateDecreaseShardingRecommendations_usingRecentWriteLoad() {
@@ -556,7 +1061,8 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             AutoShardingResult autoShardingResult = service.calculate(
                 state.projectState(projectId),
                 dataStream,
-                mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 1.0 / 3, 0.5 / 3)
+                mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 1.0 / 3, 0.5 / 3),
+                System::currentTimeMillis
             );
             assertThat(autoShardingResult.type(), is(DECREASE_SHARDS));
             assertThat(autoShardingResult.targetNumberOfShards(), is(1));
@@ -593,7 +1099,8 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             AutoShardingResult autoShardingResult = service.calculate(
                 state.projectState(projectId),
                 dataStream,
-                mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 1.0 / 3, 9999.0, 0.5 / 3)
+                mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 1.0 / 3, 9999.0, 0.5 / 3),
+                System::currentTimeMillis
             );
             assertThat(autoShardingResult.type(), is(DECREASE_SHARDS));
             assertThat(autoShardingResult.targetNumberOfShards(), is(1));
@@ -634,7 +1141,8 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             AutoShardingResult autoShardingResult = service.calculate(
                 state.projectState(projectId),
                 dataStream,
-                mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 0.9 / 3, 0.3 / 3, 1.9 / 3)
+                mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 0.9 / 3, 0.3 / 3, 1.9 / 3),
+                System::currentTimeMillis
             );
             assertThat(autoShardingResult.type(), is(DECREASE_SHARDS));
             assertThat(autoShardingResult.currentNumberOfShards(), is(3));
@@ -662,11 +1170,11 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             assertThat(decision.inputs().decreaseShardsMetric(), equalTo(WriteLoadMetric.RECENT));
             assertThat(decision.inputs().dataStream(), equalTo(dataStreamName));
             assertThat(decision.inputs().writeIndex(), equalTo(DataStream.getDefaultBackingIndexName(dataStreamName, 5, now - 1000)));
-            assertThat(decision.inputs().getWriteIndexLoad().allTimeLoad(), closeTo(0.9, 1.0e-8));
-            assertThat(decision.inputs().getWriteIndexLoad().recentLoad(), closeTo(0.3, 1.0e-8));
-            assertThat(decision.inputs().getWriteIndexLoad().peakLoad(), closeTo(1.9, 1.0e-8));
+            assertThat(decision.inputs().writeIndexLoad().allTimeLoad(), closeTo(0.9, 1.0e-8));
+            assertThat(decision.inputs().writeIndexLoad().recentLoad(), closeTo(0.3, 1.0e-8));
+            assertThat(decision.inputs().writeIndexLoad().peakLoad(), closeTo(1.9, 1.0e-8));
             assertThat(decision.inputs().currentNumberOfWriteIndexShards(), equalTo(3));
-            assertThat(decision.increaseCalculation().writeIndexLoadForIncrease(), closeTo(1.9, 1.0e-8)); // all-time
+            assertThat(decision.increaseCalculation().maxLoadWithinIncreaseLookahead().load(), closeTo(1.9, 1.0e-8)); // all-time
             // Increase shard count based on all-time load of 1.9 for write index:
             assertThat(decision.increaseCalculation().optimalShardCountForIncrease(), equalTo(2));
             // The highest load for decrease (i.e. recent load) within the cooling period is the 0.333 from generation 3
@@ -994,7 +1502,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             "the-write-index",
             Map.of(
                 "the-write-index",
-                new DataStreamAutoShardingService.WriteLoad(writeIndexAllTimeLoad, writeIndexRecentLoad, writeIndexPeakLoad)
+                new DataStreamAutoShardingService.CurrentIndexWriteLoad(writeIndexAllTimeLoad, writeIndexRecentLoad, writeIndexPeakLoad)
             ),
             3,
             1
@@ -1036,28 +1544,46 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         double shardRecentWriteLoad,
         double shardPeakWriteLoad
     ) {
-        Index index = new Index(indexName, randomUUID());
-        IndexStats.IndexStatsBuilder builder = new IndexStats.IndexStatsBuilder(indexName, randomUUID(), null, null);
-        ShardStats[] shardStats = new ShardStats[numberOfShards * 2];
-        for (int shardNumber = 0; shardNumber < numberOfShards; shardNumber++) {
-            // Add stats for the primary:
-            int primaryIndex = 2 * shardNumber;
-            shardStats[primaryIndex] = createShardStats(
-                shardWriteLoad,
-                shardRecentWriteLoad,
-                shardPeakWriteLoad,
-                new ShardId(index, shardNumber),
-                true
-            );
-            // Add stats for a replica, which should be ignored:
-            shardStats[primaryIndex + 1] = createShardStats(9999.0, 9999.0, 9999.0, new ShardId(index, shardNumber), false);
-            builder.add(shardStats[primaryIndex]).add(shardStats[primaryIndex + 1]);
-        }
+        return mockStatsResponse(
+            Map.of(indexName, new ResponseStatsSetup(numberOfShards, shardWriteLoad, shardRecentWriteLoad, shardPeakWriteLoad))
+        );
+    }
+
+    private IndicesStatsResponse mockStatsResponse(Map<String, ResponseStatsSetup> indicesStatsSetup) {
         final IndicesStatsResponse indicesStatsResponse = mock(IndicesStatsResponse.class);
-        when(indicesStatsResponse.getShards()).thenReturn(shardStats);
-        when(indicesStatsResponse.getIndex(indexName)).thenReturn(builder.build());
+        final Map<String, IndexStats> indexStatsByName = new HashMap<>();
+        for (String indexName : indicesStatsSetup.keySet()) {
+            Index index = new Index(indexName, randomUUID());
+            ResponseStatsSetup shardsSetup = indicesStatsSetup.get(indexName);
+            int numberOfShards = shardsSetup.numberOfShards;
+            IndexStats.IndexStatsBuilder builder = new IndexStats.IndexStatsBuilder(indexName, randomUUID(), null, null);
+            ShardStats[] shardStats = new ShardStats[numberOfShards * 2];
+            for (int shardNumber = 0; shardNumber < numberOfShards; shardNumber++) {
+                // Add stats for the primary:
+                int primaryIndex = 2 * shardNumber;
+                shardStats[primaryIndex] = createShardStats(
+                    shardsSetup.shardWriteLoad,
+                    shardsSetup.shardRecentWriteLoad,
+                    shardsSetup.shardPeakWriteLoad,
+                    new ShardId(index, shardNumber),
+                    true
+                );
+                // Add stats for a replica, which should be ignored:
+                shardStats[primaryIndex + 1] = createShardStats(9999.0, 9999.0, 9999.0, new ShardId(index, shardNumber), false);
+                builder.add(shardStats[primaryIndex]).add(shardStats[primaryIndex + 1]);
+            }
+            IndexStats indexStats = builder.build();
+            indexStatsByName.put(indexName, indexStats);
+        }
+        when(indicesStatsResponse.getIndices()).thenReturn(indexStatsByName);
+        when(indicesStatsResponse.getIndex(anyString())).thenAnswer(invocation -> {
+            String indexName = invocation.getArgument(0);
+            return indexStatsByName.get(indexName);
+        });
         return indicesStatsResponse;
     }
+
+    record ResponseStatsSetup(int numberOfShards, double shardWriteLoad, double shardRecentWriteLoad, double shardPeakWriteLoad) {};
 
     private static ShardStats createShardStats(
         double indexingLoad,
@@ -1128,11 +1654,49 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         List<IndexWriteLoad> backingIndicesWriteLoads,
         @Nullable DataStreamAutoShardingEvent autoShardingEvent
     ) {
+        return createDataStream(
+            builder,
+            dataStreamName,
+            numberOfShards,
+            now,
+            indicesCreationDate,
+            backingIndicesWriteLoads,
+            autoShardingEvent,
+            null
+        );
+    }
+
+    /**
+     * Creates a data stream with the provided index mode. When the mode is {@link IndexMode#TIME_SERIES}, the backing indices get the
+     * settings of a time series index too: each non-write index covers the time range from its creation until the creation of the next
+     * index, and the write index covers the time range from its creation until {@code now + 2 hours}, like a real time series write index.
+     */
+    private DataStream createDataStream(
+        ProjectMetadata.Builder builder,
+        String dataStreamName,
+        int numberOfShards,
+        Long now,
+        List<Long> indicesCreationDate,
+        List<IndexWriteLoad> backingIndicesWriteLoads,
+        @Nullable DataStreamAutoShardingEvent autoShardingEvent,
+        @Nullable IndexMode indexMode
+    ) {
         assert backingIndicesWriteLoads.size() == indicesCreationDate.size() - 1 : "Expected index load for all except write index";
         final List<Index> backingIndices = new ArrayList<>();
         int backingIndicesCount = indicesCreationDate.size();
         for (int k = 0; k < indicesCreationDate.size(); k++) {
             long createdAt = indicesCreationDate.get(k);
+            Settings timeSeriesSettings = Settings.EMPTY;
+            if (indexMode == IndexMode.TIME_SERIES) {
+                long timeSeriesEnd = k < backingIndicesCount - 1
+                    ? indicesCreationDate.get(k + 1)
+                    : now + TimeValue.timeValueHours(2).millis();
+                timeSeriesSettings = Settings.builder()
+                    .put(IndexSettings.MODE.getKey(), IndexMode.TIME_SERIES)
+                    .put(IndexSettings.TIME_SERIES_START_TIME.getKey(), Instant.ofEpochMilli(createdAt).toString())
+                    .put(IndexSettings.TIME_SERIES_END_TIME.getKey(), Instant.ofEpochMilli(timeSeriesEnd).toString())
+                    .build();
+            }
             IndexMetadata.Builder indexMetaBuilder;
             if (k < backingIndicesCount - 1) {
                 IndexWriteLoad backingIndexWriteLoad = backingIndicesWriteLoads.get(k);
@@ -1141,7 +1705,8 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
                         DataStream.getDefaultBackingIndexName(dataStreamName, k + 1, createdAt),
                         numberOfShards,
                         backingIndexWriteLoad,
-                        createdAt
+                        createdAt,
+                        timeSeriesSettings
                     )
                 );
                 // add rollover info only for non-write indices
@@ -1150,7 +1715,13 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             } else {
                 // write index
                 indexMetaBuilder = IndexMetadata.builder(
-                    createIndexMetadata(DataStream.getDefaultBackingIndexName(dataStreamName, k + 1), numberOfShards, null, createdAt)
+                    createIndexMetadata(
+                        DataStream.getDefaultBackingIndexName(dataStreamName, k + 1),
+                        numberOfShards,
+                        null,
+                        createdAt,
+                        timeSeriesSettings
+                    )
                 );
             }
             IndexMetadata indexMetadata = indexMetaBuilder.build();
@@ -1160,7 +1731,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         return DataStream.builder(
             dataStreamName,
             DataStream.DataStreamIndices.backingIndicesBuilder(backingIndices).setAutoShardingEvent(autoShardingEvent).build()
-        ).setGeneration(backingIndicesCount).build();
+        ).setGeneration(backingIndicesCount).setIndexMode(indexMode).build();
     }
 
     private IndexMetadata createIndexMetadata(
@@ -1169,12 +1740,23 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         @Nullable IndexWriteLoad indexWriteLoad,
         long createdAt
     ) {
+        return createIndexMetadata(indexName, numberOfShards, indexWriteLoad, createdAt, Settings.EMPTY);
+    }
+
+    private IndexMetadata createIndexMetadata(
+        String indexName,
+        int numberOfShards,
+        @Nullable IndexWriteLoad indexWriteLoad,
+        long createdAt,
+        Settings additionalSettings
+    ) {
         return IndexMetadata.builder(indexName)
             .settings(
                 Settings.builder()
                     .put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, numberOfShards)
                     .put(IndexMetadata.SETTING_NUMBER_OF_REPLICAS, 0)
                     .put(IndexMetadata.SETTING_VERSION_CREATED, IndexVersion.current())
+                    .put(additionalSettings)
                     .build()
             )
             .stats(indexWriteLoad == null ? null : new IndexMetadataStats(indexWriteLoad, 1, 1))
@@ -1336,7 +1918,11 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
     private DataStreamAutoShardingService.Decision createNoChangeDecision(int writeIndexLoad) {
         return new Decision(
             createDecisionInputsForPeriodLoggerTests(writeIndexLoad),
-            new Decision.IncreaseCalculation(1.0 * writeIndexLoad, 2, null),
+            new Decision.IncreaseCalculation(
+                new Decision.IncreaseCalculation.MaxLoadWithinIncreaseLookahead(1.0 * writeIndexLoad, "my-good-enough-index"),
+                2,
+                null
+            ),
             null,
             new AutoShardingResult(AutoShardingType.NO_CHANGE_REQUIRED, 3, 3, TimeValue.ZERO)
         );
@@ -1346,7 +1932,11 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult result = new AutoShardingResult(INCREASE_SHARDS, 3, 4, TimeValue.ZERO);
         return new Decision(
             createDecisionInputsForPeriodLoggerTests(writeIndexLoad),
-            new Decision.IncreaseCalculation(1.0 * writeIndexLoad, 4, result),
+            new Decision.IncreaseCalculation(
+                new Decision.IncreaseCalculation.MaxLoadWithinIncreaseLookahead(1.0 * writeIndexLoad, "my-could-be-better-index"),
+                4,
+                result
+            ),
             null,
             result
         );
@@ -1364,7 +1954,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             "the-write-index",
             Map.of(
                 "the-write-index",
-                new DataStreamAutoShardingService.WriteLoad(0.1, 0.2, 1.0 * writeIndexLoadForIncreaseAndDataStreamName)
+                new DataStreamAutoShardingService.CurrentIndexWriteLoad(0.1, 0.2, 1.0 * writeIndexLoadForIncreaseAndDataStreamName)
             ),
             3,
             1
@@ -1380,7 +1970,8 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 1.0, 1.0, 1.0)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 1.0, 1.0, 1.0),
+            System::currentTimeMillis
         );
         assertThat(autoShardingResult, is(NOT_APPLICABLE_RESULT));
         assertThat(decisionsLogged, hasSize(0));
@@ -1392,7 +1983,12 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         DataStream dataStream = createLookupModeDataStream(builder);
         ClusterState state = createClusterStateWithDataStream(builder);
 
-        AutoShardingResult autoShardingResult = service.calculate(state.projectState(projectId), dataStream, (IndicesStatsResponse) null);
+        AutoShardingResult autoShardingResult = service.calculate(
+            state.projectState(projectId),
+            dataStream,
+            (IndicesStatsResponse) null,
+            System::currentTimeMillis
+        );
         assertThat(autoShardingResult, is(NOT_APPLICABLE_RESULT));
         assertThat(decisionsLogged, hasSize(0));
     }
@@ -1434,13 +2030,19 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult withStats = service.calculate(
             state.projectState(projectId),
             dataStream,
-            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 1.0, 1.0, 1.0)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 1.0, 1.0, 1.0),
+            System::currentTimeMillis
         );
         assertThat(withStats, is(NOT_APPLICABLE_RESULT));
         assertThat(decisionsLogged, hasSize(0));
 
         // With null stats: same guard should fire before the null-stats check.
-        AutoShardingResult withNullStats = service.calculate(state.projectState(projectId), dataStream, (IndicesStatsResponse) null);
+        AutoShardingResult withNullStats = service.calculate(
+            state.projectState(projectId),
+            dataStream,
+            (IndicesStatsResponse) null,
+            System::currentTimeMillis
+        );
         assertThat(withNullStats, is(NOT_APPLICABLE_RESULT));
         assertThat(decisionsLogged, hasSize(0));
     }
@@ -1477,7 +2079,8 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult result = service.calculate(
             state.projectState(projectId),
             dataStream,
-            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 9999.0, 9999.0)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 9999.0, 9999.0),
+            System::currentTimeMillis
         );
         assertThat(result.type(), is(INCREASE_SHARDS));
     }
@@ -1492,7 +2095,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         IndicesStatsResponse statsResponse = mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3);
 
         // with the default minimum of 1 the load alone dictates the target
-        AutoShardingResult result = service.calculate(state.projectState(projectId), dataStream, statsResponse);
+        AutoShardingResult result = service.calculate(state.projectState(projectId), dataStream, statsResponse, System::currentTimeMillis);
         assertThat(result.type(), is(DECREASE_SHARDS));
         assertThat(result.targetNumberOfShards(), is(1));
 
@@ -1500,7 +2103,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         clusterSettings.applySettings(
             Settings.builder().put(DataStreamAutoShardingService.DATA_STREAMS_AUTO_SHARDING_MIN_NUMBER_OF_SHARDS.getKey(), 2).build()
         );
-        result = service.calculate(state.projectState(projectId), dataStream, statsResponse);
+        result = service.calculate(state.projectState(projectId), dataStream, statsResponse, System::currentTimeMillis);
         assertThat(result.type(), is(DECREASE_SHARDS));
         assertThat(result.targetNumberOfShards(), is(2));
         assertThat(decisionsLogged.getLast().inputs().minNumberOfShards(), is(2));
@@ -1509,7 +2112,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         clusterSettings.applySettings(
             Settings.builder().put(DataStreamAutoShardingService.DATA_STREAMS_AUTO_SHARDING_MIN_NUMBER_OF_SHARDS.getKey(), 3).build()
         );
-        result = service.calculate(state.projectState(projectId), dataStream, statsResponse);
+        result = service.calculate(state.projectState(projectId), dataStream, statsResponse, System::currentTimeMillis);
         assertThat(result.type(), is(NO_CHANGE_REQUIRED));
         assertThat(result.targetNumberOfShards(), is(3));
 
@@ -1517,19 +2120,19 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         clusterSettings.applySettings(
             Settings.builder().put(DataStreamAutoShardingService.DATA_STREAMS_AUTO_SHARDING_MIN_NUMBER_OF_SHARDS.getKey(), 5).build()
         );
-        result = service.calculate(state.projectState(projectId), dataStream, statsResponse);
+        result = service.calculate(state.projectState(projectId), dataStream, statsResponse, System::currentTimeMillis);
         assertThat(result.type(), is(NO_CHANGE_REQUIRED));
         assertThat(result.targetNumberOfShards(), is(3));
     }
 
     public void testCalculateDecreaseShardingRecommendations_timeSeriesMinNumberOfShards() {
-        // two 3-shard data streams with identical low load: one time series, one standard
         var projectId = randomProjectIdOrDefault();
+        // two 3-shard data streams with identical low load: one time series, one standard
         ProjectMetadata.Builder builder = ProjectMetadata.builder(projectId);
-        DataStream timeSeriesDataStream = createOldLowLoadDataStream(builder, dataStreamName, 3).copy()
-            .setIndexMode(IndexMode.TIME_SERIES)
-            .build();
+        // Time series data stream
+        DataStream timeSeriesDataStream = createOldLowLoadDataStream(builder, dataStreamName, 3, IndexMode.TIME_SERIES);
         builder.put(timeSeriesDataStream);
+        // Standard data stream
         String standardDataStreamName = dataStreamName + "-standard";
         DataStream standardDataStream = createOldLowLoadDataStream(builder, standardDataStreamName, 3);
         builder.put(standardDataStream);
@@ -1544,14 +2147,16 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult timeSeriesResult = service.calculate(
             state.projectState(projectId),
             timeSeriesDataStream,
-            mockStatsResponse(timeSeriesDataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3)
+            mockStatsResponse(timeSeriesDataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3),
+            System::currentTimeMillis
         );
         assertThat(timeSeriesResult.type(), is(NO_CHANGE_REQUIRED));
         assertThat(timeSeriesResult.targetNumberOfShards(), is(3));
         AutoShardingResult standardResult = service.calculate(
             state.projectState(projectId),
             standardDataStream,
-            mockStatsResponse(standardDataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3)
+            mockStatsResponse(standardDataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3),
+            System::currentTimeMillis
         );
         assertThat(standardResult.type(), is(DECREASE_SHARDS));
         assertThat(standardResult.targetNumberOfShards(), is(1));
@@ -1586,7 +2191,8 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult result = service.calculate(
             state.projectState(projectId),
             dataStream,
-            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3),
+            System::currentTimeMillis
         );
         assertThat(result.type(), is(NO_CHANGE_REQUIRED));
         assertThat(result.targetNumberOfShards(), is(3));
@@ -1598,6 +2204,15 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
      * whose previous backing indices each carried a peak load of about 1 across all their shards (i.e. enough for a single shard).
      */
     private DataStream createOldLowLoadDataStream(ProjectMetadata.Builder builder, String name, int numberOfShards) {
+        return createOldLowLoadDataStream(builder, name, numberOfShards, null);
+    }
+
+    private DataStream createOldLowLoadDataStream(
+        ProjectMetadata.Builder builder,
+        String name,
+        int numberOfShards,
+        @Nullable IndexMode indexMode
+    ) {
         return createDataStream(
             builder,
             name,
@@ -1610,8 +2225,9 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
                 now - TimeValue.timeValueDays(2).getMillis(),
                 now - 1000
             ),
-            getWriteLoad(numberOfShards, 9999.0, 9999.0, 1.0 / numberOfShards),
-            null
+            Stream.generate(() -> getWriteLoad(numberOfShards, 9999.0, 9999.0, 1.0 / numberOfShards)).limit(4).toList(),
+            null,
+            indexMode
         );
     }
 

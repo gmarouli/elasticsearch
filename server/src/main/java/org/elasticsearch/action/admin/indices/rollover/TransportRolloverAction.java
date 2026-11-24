@@ -284,7 +284,12 @@ public class TransportRolloverAction extends TransportMasterNodeAction<RolloverR
                 // Failure stores currently don't support auto sharding yet.
                 if (indexAbstraction.getType().equals(IndexAbstraction.Type.DATA_STREAM) && targetFailureStore == false) {
                     DataStream dataStream = (DataStream) indexAbstraction;
-                    rolloverAutoSharding = dataStreamAutoShardingService.calculate(projectState, dataStream, statsResponse);
+                    rolloverAutoSharding = dataStreamAutoShardingService.calculate(
+                        projectState,
+                        dataStream,
+                        statsResponse,
+                        threadPool::absoluteTimeInMillis
+                    );
                     logger.debug("auto sharding result for data stream [{}] is [{}]", dataStream.getName(), rolloverAutoSharding);
 
                     // if auto sharding recommends increasing the number of shards we want to trigger a rollover even if there are no

@@ -41,6 +41,7 @@ import org.elasticsearch.cluster.routing.RecoverySource;
 import org.elasticsearch.cluster.routing.ShardRouting;
 import org.elasticsearch.cluster.routing.UnassignedInfo;
 import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.common.compress.CompressedXContent;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.core.Nullable;
@@ -61,6 +62,7 @@ import org.elasticsearch.telemetry.TestTelemetryPlugin;
 import org.elasticsearch.test.ESIntegTestCase;
 import org.elasticsearch.test.transport.MockTransportService;
 import org.elasticsearch.threadpool.ThreadPool;
+import org.elasticsearch.transport.TransportRequestHandler;
 import org.elasticsearch.xcontent.XContentType;
 import org.junit.After;
 import org.junit.Before;
@@ -73,19 +75,21 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 
 import static org.elasticsearch.action.datastreams.autosharding.DataStreamAutoShardingService.DATA_STREAMS_AUTO_SHARDING_ENABLED;
 import static org.elasticsearch.cluster.metadata.MetadataIndexTemplateService.DEFAULT_TIMESTAMP_FIELD;
 import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertAcked;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 
-public class DataStreamAutoshardingIT extends ESIntegTestCase {
+public class DataStreamAutoShardingIT extends ESIntegTestCase {
 
     @Override
     protected Collection<Class<? extends Plugin>> nodePlugins() {
@@ -105,6 +109,15 @@ public class DataStreamAutoshardingIT extends ESIntegTestCase {
                 // configurations
                 .put(DataStreamLifecycleService.DATA_STREAM_LIFECYCLE_POLL_INTERVAL, "30d")
         );
+    }
+
+    @After
+    public void clearMockedIndicesStats() {
+        // Reset mocks to forward the request to the real handler.
+        for (String nodeName : internalCluster().getNodeNames()) {
+            MockTransportService.getInstance(nodeName)
+                .addRequestHandlingBehavior(IndicesStatsAction.NAME + "[n]", TransportRequestHandler::messageReceived);
+        }
     }
 
     @After
@@ -534,6 +547,107 @@ public class DataStreamAutoshardingIT extends ESIntegTestCase {
         return true;
     }
 
+    public void testStandardRolloverAutoShardsOnlyBasedOnWriteIndex() throws Exception {
+        putComposableIndexTemplate("my-template", List.of("logs-*"), indexSettings(1, 0).build());
+        assertAcked(
+            client().execute(
+                CreateDataStreamAction.INSTANCE,
+                new CreateDataStreamAction.Request(TEST_REQUEST_TIMEOUT, TEST_REQUEST_TIMEOUT, "logs-es")
+            )
+        );
+        indexDocs("logs-es", 10);
+
+        // the first rollover does not change the number of shards, the real write load of the first index is low
+        assertAcked(indicesAdmin().rolloverIndex(new RolloverRequest("logs-es", null)));
+        ClusterState clusterState = internalCluster().getCurrentMasterNodeInstance(ClusterService.class).state();
+        DataStream dataStream = clusterState.getMetadata().getProject().dataStreams().get("logs-es");
+        List<Index> backingIndices = dataStream.getIndices();
+        assertThat(backingIndices.size(), is(2));
+        IndexMetadata previousIndexMeta = clusterState.metadata().getProject().index(backingIndices.getFirst());
+        IndexMetadata writeIndexMeta = clusterState.metadata().getProject().index(backingIndices.getLast());
+        assertThat(writeIndexMeta.getNumberOfShards(), is(1));
+
+        // Mock a high load on the non-last backing index of the data stream
+        String assignedShardNodeId = clusterState.routingTable().index(writeIndexMeta.getIndex()).shard(0).primaryShard().currentNodeId();
+        List<ShardStats> shards = List.of(
+            // the shard stats will yield a write load of 75.0 which will make the auto sharding service recommend an increase
+            getShardStats(previousIndexMeta, 0, 75, assignedShardNodeId),
+            getShardStats(writeIndexMeta, 0, 0, assignedShardNodeId)
+        );
+        mockStats(clusterState, assignedShardNodeId, shards);
+
+        assertAcked(indicesAdmin().rolloverIndex(new RolloverRequest("logs-es", null)));
+        ClusterState clusterStateAfterRollover = internalCluster().getCurrentMasterNodeInstance(ClusterService.class).state();
+        DataStream dataStreamAfterRollover = clusterStateAfterRollover.getMetadata().getProject().dataStreams().get("logs-es");
+        assertThat(dataStreamAfterRollover.getIndices().size(), is(3));
+        assertThat(
+            clusterStateAfterRollover.metadata().getProject().getIndexSafe(dataStreamAfterRollover.getWriteIndex()).getNumberOfShards(),
+            is(1)
+        );
+    }
+
+    /**
+     * Rolls a time series data stream over several times within the look ahead time, so that the time ranges of the backing indices are
+     * chained, and verifies that a high write load on any of the non-write backing indices makes the next rollover auto shard up.
+     */
+    public void testTimeSeriesRolloverAutoShardsBasedOnAnyBackingIndexWithinTheLookAheadTime() throws Exception {
+        final String dataStreamName = "metrics-es";
+        putComposableIndexTemplate("my-template", List.of("metrics-*"), indexSettings(1, 0).put("index.mode", "time_series").build(), """
+            {
+              "_doc": {
+                "properties": {
+                  "@timestamp": { "type": "date" },
+                  "metricset": { "type": "keyword", "time_series_dimension": true }
+                }
+              }
+            }""");
+        assertAcked(
+            client().execute(
+                CreateDataStreamAction.INSTANCE,
+                new CreateDataStreamAction.Request(TEST_REQUEST_TIMEOUT, TEST_REQUEST_TIMEOUT, dataStreamName)
+            )
+        );
+        long testStartMillis = System.currentTimeMillis();
+
+        int rollovers = randomIntBetween(3, 5);
+        for (int i = 0; i < rollovers; i++) {
+            assertAcked(indicesAdmin().rolloverIndex(new RolloverRequest(dataStreamName, null)));
+        }
+
+        ClusterState clusterState = internalCluster().getCurrentMasterNodeInstance(ClusterService.class).state();
+        DataStream dataStream = clusterState.getMetadata().getProject().dataStreams().get(dataStreamName);
+        assertThat(dataStream.getIndices().size(), is(rollovers + 1));
+        List<IndexMetadata> indices = dataStream.getIndices()
+            .stream()
+            .map(index -> clusterState.metadata().getProject().index(index))
+            .toList();
+
+        // Mock a high write load on one randomly selected non-write backing index, all the other backing indices are idle
+        int loadedIndex = randomIntBetween(0, indices.size() - 2);
+        logger.info("-> simulating a high write load on backing index [{}] of [{}]", loadedIndex, indices.size());
+        String assignedShardNodeId = clusterState.routingTable()
+            .index(indices.getLast().getIndex())
+            .shard(0)
+            .primaryShard()
+            .currentNodeId();
+        List<ShardStats> shards = new ArrayList<>(indices.size());
+        for (int i = 0; i < indices.size(); i++) {
+            // the shard stats of the loaded index will yield a write load of 75.0 which will make the auto sharding service recommend an
+            // increase
+            shards.add(getShardStats(indices.get(i), 0, i == loadedIndex ? 75 : 0, assignedShardNodeId));
+        }
+        mockStats(clusterState, assignedShardNodeId, shards);
+
+        assertAcked(indicesAdmin().rolloverIndex(new RolloverRequest(dataStreamName, null)));
+        ClusterState clusterStateAfterRollover = internalCluster().getCurrentMasterNodeInstance(ClusterService.class).state();
+        DataStream dataStreamAfterRollover = clusterStateAfterRollover.getMetadata().getProject().dataStreams().get(dataStreamName);
+        assertThat(dataStreamAfterRollover.getIndices().size(), is(rollovers + 2));
+        IndexMetadata newWriteIndex = clusterStateAfterRollover.metadata()
+            .getProject()
+            .getIndexSafe(dataStreamAfterRollover.getWriteIndex());
+        assertThat(newWriteIndex.getNumberOfShards(), greaterThan(1));
+    }
+
     private static ShardStats getShardStats(IndexMetadata indexMeta, int shardIndex, long targetWriteLoad, String assignedShardNodeId) {
         ShardId shardId = new ShardId(indexMeta.getIndex(), shardIndex);
         Path path = createTempDir().resolve("indices").resolve(indexMeta.getIndexUUID()).resolve(String.valueOf(shardIndex));
@@ -557,24 +671,40 @@ public class DataStreamAutoshardingIT extends ESIntegTestCase {
     }
 
     static void putComposableIndexTemplate(String id, List<String> patterns, @Nullable Settings settings) throws IOException {
+        putComposableIndexTemplate(id, patterns, settings, null);
+    }
+
+    static void putComposableIndexTemplate(String id, List<String> patterns, @Nullable Settings settings, @Nullable String mappings)
+        throws IOException {
         TransportPutComposableIndexTemplateAction.Request request = new TransportPutComposableIndexTemplateAction.Request(id);
         request.indexTemplate(
             ComposableIndexTemplate.builder()
                 .indexPatterns(patterns)
-                .template(Template.builder().settings(settings))
+                .template(Template.builder().settings(settings).mappings(mappings != null ? new CompressedXContent(mappings) : null))
                 .dataStreamTemplate(new ComposableIndexTemplate.DataStreamTemplate())
                 .build()
         );
-        client().execute(TransportPutComposableIndexTemplateAction.TYPE, request).actionGet();
+        assertAcked(client().execute(TransportPutComposableIndexTemplateAction.TYPE, request));
     }
 
     static void indexDocs(String dataStream, int numDocs) {
+        indexDocs(
+            dataStream,
+            numDocs,
+            (ignored) -> String.format(
+                Locale.ROOT,
+                "{\"%s\":\"%s\"}",
+                DEFAULT_TIMESTAMP_FIELD,
+                DateFieldMapper.DEFAULT_DATE_TIME_FORMATTER.formatMillis(System.currentTimeMillis())
+            )
+        );
+    }
+
+    static void indexDocs(String dataStream, int numDocs, Function<Integer, String> sourceSupplier) {
         BulkRequest bulkRequest = new BulkRequest();
         for (int i = 0; i < numDocs; i++) {
-            String value = DateFieldMapper.DEFAULT_DATE_TIME_FORMATTER.formatMillis(System.currentTimeMillis());
             bulkRequest.add(
-                new IndexRequest(dataStream).opType(DocWriteRequest.OpType.CREATE)
-                    .source(String.format(Locale.ROOT, "{\"%s\":\"%s\"}", DEFAULT_TIMESTAMP_FIELD, value), XContentType.JSON)
+                new IndexRequest(dataStream).opType(DocWriteRequest.OpType.CREATE).source(sourceSupplier.apply(i), XContentType.JSON)
             );
         }
         BulkResponse bulkResponse = client().bulk(bulkRequest).actionGet();
@@ -611,6 +741,14 @@ public class DataStreamAutoshardingIT extends ESIntegTestCase {
         IndexMetadata indexMetadata,
         List<ShardStats> shards
     ) {
+        mockStats(clusterState, assignedShardNodeId, shards);
+    }
+
+    /**
+     * Mocks the indices stats so that one node returns the provided shard stats, which can belong to several indices, and the other
+     * nodes do not return any stats.
+     */
+    private static void mockStats(ClusterState clusterState, String assignedShardNodeId, List<ShardStats> shards) {
         for (DiscoveryNode node : clusterState.nodes().getAllNodes()) {
             // one node returns the stats for all our shards, the other nodes don't return any stats
             if (node.getId().equals(assignedShardNodeId)) {
@@ -620,7 +758,7 @@ public class DataStreamAutoshardingIT extends ESIntegTestCase {
                             TransportIndicesStatsAction.class,
                             node.getName()
                         );
-                        channel.sendResponse(instance.new NodeResponse(node.getId(), indexMetadata.getNumberOfShards(), shards, List.of()));
+                        channel.sendResponse(instance.new NodeResponse(node.getId(), shards.size(), shards, List.of()));
                     });
             } else {
                 MockTransportService.getInstance(node.getName())

@@ -33,8 +33,9 @@ import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexMode;
 import org.elasticsearch.index.shard.IndexingStats;
 
-import java.util.Arrays;
+import java.time.Instant;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -45,6 +46,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -278,13 +280,13 @@ public class DataStreamAutoShardingService {
      * @param recentLoad The sum of the primaries' recent load (see {@link IndexingStats.Stats#getRecentWriteLoad()})
      * @param peakLoad The sum of the primaries' peak load (see {@link IndexingStats.Stats#getPeakWriteLoad()})
      */
-    record WriteLoad(double allTimeLoad, double recentLoad, double peakLoad) {
+    record CurrentIndexWriteLoad(double allTimeLoad, double recentLoad, double peakLoad) {
 
         /**
          * Computes the write load of an index from its live stats. Only primary shards that report indexing stats are taken into account,
          * replicas are skipped because they do not reflect the load the index needs to sustain.
          */
-        static WriteLoad create(IndexStats indexStats) {
+        static CurrentIndexWriteLoad create(IndexStats indexStats) {
             double allTimeLoad = 0.0;
             double recentLoad = 0.0;
             double peakLoad = 0.0;
@@ -297,7 +299,7 @@ public class DataStreamAutoShardingService {
                 recentLoad += stats.getRecentWriteLoad();
                 peakLoad += stats.getPeakWriteLoad();
             }
-            return new WriteLoad(allTimeLoad, recentLoad, peakLoad);
+            return new CurrentIndexWriteLoad(allTimeLoad, recentLoad, peakLoad);
         }
 
         /**
@@ -354,8 +356,8 @@ public class DataStreamAutoShardingService {
          *     (see the {@link #DATA_STREAMS_AUTO_SHARDING_DECREASE_SHARDS_LOAD_METRIC} cluster setting)
          * @param dataStream The name of the data stream
          * @param writeIndex The name of the current write index
-         * @param writeIndexLoads The current write load of the indices that are relevant to the decision, keyed by index name. It always
-         *     contains the write index (see {@link #writeIndex}).
+         * @param currentWriteLoadByIndex The current write load of the indices that are relevant to the decision, keyed by index name.
+         *     It always contains the write index (see {@link #writeIndex}).
          * @param currentNumberOfWriteIndexShards The number of shards for the current write index
          * @param minNumberOfShards The minimum number of shards a decrease recommendation may target for this data stream (see the
          *     {@link #DATA_STREAMS_AUTO_SHARDING_MIN_NUMBER_OF_SHARDS} and
@@ -370,32 +372,35 @@ public class DataStreamAutoShardingService {
             DataStreamAutoShardingService.WriteLoadMetric decreaseShardsMetric,
             String dataStream,
             String writeIndex,
-            Map<String, WriteLoad> writeIndexLoads,
+            Map<String, CurrentIndexWriteLoad> currentWriteLoadByIndex,
             int currentNumberOfWriteIndexShards,
             int minNumberOfShards
         ) {
             /**
-             * @return the current write load of the write index
+             * @return the current write load of the last index of the data stream (the write index)
              */
-            WriteLoad getWriteIndexLoad() {
-                return writeIndexLoads.get(writeIndex);
+            CurrentIndexWriteLoad writeIndexLoad() {
+                return currentWriteLoadByIndex.get(writeIndex);
             }
         }
 
         /**
          * Contains details from the increase shards calculation.
          *
-         * @param writeIndexLoadForIncrease The load considered for the increase shards calculation (i.e. one of write index load metrics
-         *     from the {@link Decision.Inputs}, as determined by {@link Decision.Inputs#increaseShardsMetric})
+         * @param maxLoadWithinIncreaseLookahead The load considered for the increase shards calculation and the index that it belongs to
+         *                                       (i.e. one of write index load metrics from the {@link Decision.Inputs}, as determined by
+         *                                       {@link Decision.Inputs#increaseShardsMetric})
          * @param optimalShardCountForIncrease The optimal shard count determined based on the load
          * @param increaseResult If the optimal shard count is greater than the current shard count, a recommendation to increase the number
-         *     of shards (possibly after a cooldown period); otherwise, null
+         *                       of shards (possibly after a cooldown period); otherwise, null
          */
         record IncreaseCalculation(
-            double writeIndexLoadForIncrease,
+            MaxLoadWithinIncreaseLookahead maxLoadWithinIncreaseLookahead,
             int optimalShardCountForIncrease,
             @Nullable AutoShardingResult increaseResult
-        ) {}
+        ) {
+            record MaxLoadWithinIncreaseLookahead(double load, @Nullable String previousIndexWithMaxLoad) {}
+        }
 
         /**
          * Contains details from the increase shards calculation.
@@ -429,8 +434,8 @@ public class DataStreamAutoShardingService {
         public String toString() {
             return Strings.format(
                 "For data stream %s: %s based on [inc/dec cooldowns %s/%s, %d-%d threads, min shards %d, "
-                    + "relevant indices have %s, write index current shards %d, "
-                    + "increase calculation gives %d shards using %s load %g for write index%s]",
+                    + "write index %s, write index current shards %d, write load of %s, "
+                    + "increase calculation gives %d shards using %s load %g for %s%s]",
                 inputs.dataStream,
                 result,
                 inputs.increaseShardsCooldown,
@@ -439,11 +444,12 @@ public class DataStreamAutoShardingService {
                 inputs.maxWriteThreads,
                 inputs.minNumberOfShards,
                 inputs.writeIndex,
-                inputs.writeIndexLoads,
                 inputs.currentNumberOfWriteIndexShards,
+                inputs.currentWriteLoadByIndex,
                 increaseCalculation.optimalShardCountForIncrease,
                 inputs.increaseShardsMetric,
-                increaseCalculation.writeIndexLoadForIncrease,
+                increaseCalculation.maxLoadWithinIncreaseLookahead().load,
+                increaseCalculation.maxLoadWithinIncreaseLookahead().previousIndexWithMaxLoad(),
                 decreaseCalculation == null
                     ? ""
                     : Strings.format(
@@ -495,7 +501,12 @@ public class DataStreamAutoShardingService {
      * @param statsResponse The indices stats (indexing) of the data stream's indices, or null if they could not be retrieved, in which
      *     case the result is not applicable
      */
-    public AutoShardingResult calculate(ProjectState state, DataStream dataStream, IndicesStatsResponse statsResponse) {
+    public AutoShardingResult calculate(
+        ProjectState state,
+        DataStream dataStream,
+        IndicesStatsResponse statsResponse,
+        Supplier<Long> nowSupplier
+    ) {
         if (isAutoShardingEnabled == false) {
             logger.debug("Data stream auto-sharding service is not enabled.");
             return NOT_APPLICABLE_RESULT;
@@ -526,16 +537,29 @@ public class DataStreamAutoShardingService {
             logger.debug("Data stream [{}] has indexing mode LOOKUP; auto-sharding is not applicable.", dataStream.getName());
             return NOT_APPLICABLE_RESULT;
         }
-        IndexStats writeIndexStats = statsResponse.getIndex(dataStream.getWriteIndex().getName());
+        String writeIndexName = dataStream.getWriteIndex().getName();
+        IndexStats writeIndexStats = statsResponse.getIndex(writeIndexName);
         if (writeIndexStats == null) {
             logger.debug(
-                "Data stream auto-sharding service cannot compute the optimal number of shards for data stream [{}] as no index"
+                "Data stream auto-sharding service cannot compute the optimal number of shards for data stream [{}] as index"
                     + " stats are not available",
                 dataStream.getName()
             );
             return NOT_APPLICABLE_RESULT;
         }
-        Map<String, WriteLoad> writeLoads = List.of(writeIndexStats).stream().collect(toMap(IndexStats::getIndex, WriteLoad::create));
+        ProjectMetadata projectMetadata = state.metadata();
+        Map<String, CurrentIndexWriteLoad> writeLoads = new HashMap<>();
+        writeLoads.put(writeIndexName, CurrentIndexWriteLoad.create(writeIndexStats));
+        // We check the current data stream mode because this is the one that routes the indexing load.
+        boolean isTimeSeriesDataStream = IndexMode.isTsdb(dataStream.getIndexMode());
+        if (isTimeSeriesDataStream) {
+            long lookbackStartMillis = nowSupplier.get() - timeSeriesIncreaseShardsLookback;
+            for (IndexStats indexStats : statsResponse.getIndices().values()) {
+                if (isWithinTimeSeriesLookback(projectMetadata, indexStats.getIndex(), lookbackStartMillis)) {
+                    writeLoads.put(indexStats.getIndex(), CurrentIndexWriteLoad.create(indexStats));
+                }
+            }
+        }
         IndexMetadata writeIndex = state.metadata().index(dataStream.getWriteIndex());
         assert writeIndex != null : "the data stream write index must exist in the provided cluster metadata";
         Decision.Inputs inputs = new Decision.Inputs(
@@ -546,12 +570,12 @@ public class DataStreamAutoShardingService {
             increaseShardsMetric,
             decreaseShardsMetric,
             dataStream.getName(),
-            writeIndex.getIndex().getName(),
+            writeIndexName,
             writeLoads,
             writeIndex.getNumberOfShards(),
             resolveMinNumberOfShards(nextIndexMode)
         );
-        Decision decision = innerCalculate(state.metadata(), dataStream, inputs);
+        Decision decision = innerCalculate(projectMetadata, dataStream, inputs);
         decisionLogger.accept(decision);
         return decision.result();
     }
@@ -574,16 +598,6 @@ public class DataStreamAutoShardingService {
 
     private int resolveMinNumberOfShards(@Nullable IndexMode indexMode) {
         return indexMode == IndexMode.TIME_SERIES ? timeSeriesMinNumberOfShards : minNumberOfShards;
-    }
-
-    private static double sumLoadMetrics(IndexStats stats, Function<IndexingStats.Stats, Double> loadMetric) {
-        return Arrays.stream(stats.getShards())
-            .filter(shardStats -> shardStats.getStats().indexing != null)
-            // only take primaries into account as in stateful the replicas also index data
-            .filter(shardStats -> shardStats.getShardRouting().primary())
-            .map(shardStats -> shardStats.getStats().indexing.getTotal())
-            .map(loadMetric)
-            .reduce(0.0, Double::sum);
     }
 
     private Decision innerCalculate(ProjectMetadata project, DataStream dataStream, Decision.Inputs inputs) {
@@ -612,12 +626,29 @@ public class DataStreamAutoShardingService {
     }
 
     private Decision.IncreaseCalculation calculateIncreaseShardsDecision(DataStream dataStream, Decision.Inputs inputs) {
-        // increasing the number of shards is calculated solely based on the index load of the write index
-        double writeIndexLoadForIncrease = inputs.writeIndexLoads.get(inputs.writeIndex).pickMetric(inputs.increaseShardsMetric());
+        Decision.IncreaseCalculation.MaxLoadWithinIncreaseLookahead maxWriteLoad;
+        if (IndexMode.isTsdb(dataStream.getIndexMode())) {
+            maxWriteLoad = inputs.currentWriteLoadByIndex.entrySet()
+                .stream()
+                .map(
+                    entry -> new Decision.IncreaseCalculation.MaxLoadWithinIncreaseLookahead(
+                        entry.getValue().pickMetric(increaseShardsMetric),
+                        entry.getKey()
+                    )
+                )
+                .max(Comparator.comparingDouble(Decision.IncreaseCalculation.MaxLoadWithinIncreaseLookahead::load))
+                .get();
+        } else {
+            assert inputs.currentWriteLoadByIndex.containsKey(inputs.writeIndex) : "the load of the write index should be available";
+            maxWriteLoad = new Decision.IncreaseCalculation.MaxLoadWithinIncreaseLookahead(
+                inputs.currentWriteLoadByIndex.get(inputs.writeIndex).pickMetric(inputs.increaseShardsMetric()),
+                inputs.writeIndex
+            );
+        }
         int optimalShardCountForIncrease = computeOptimalNumberOfShards(
             inputs.minWriteThreads(),
             inputs.maxWriteThreads(),
-            writeIndexLoadForIncrease
+            maxWriteLoad.load
         );
         if (optimalShardCountForIncrease > inputs.currentNumberOfWriteIndexShards()) {
             TimeValue timeSinceLastAutoShardingEvent = dataStream.getAutoShardingEvent() != null
@@ -627,7 +658,7 @@ public class DataStreamAutoShardingService {
                 Math.max(0L, inputs.increaseShardsCooldown().millis() - timeSinceLastAutoShardingEvent.millis())
             );
             return new Decision.IncreaseCalculation(
-                writeIndexLoadForIncrease,
+                maxWriteLoad,
                 optimalShardCountForIncrease,
                 new AutoShardingResult(
                     coolDownRemaining.equals(TimeValue.ZERO)
@@ -639,7 +670,7 @@ public class DataStreamAutoShardingService {
                 )
             );
         }
-        return new Decision.IncreaseCalculation(writeIndexLoadForIncrease, optimalShardCountForIncrease, null);
+        return new Decision.IncreaseCalculation(maxWriteLoad, optimalShardCountForIncrease, null);
     }
 
     /**
@@ -742,7 +773,7 @@ public class DataStreamAutoShardingService {
         LongSupplier nowSupplier
     ) {
         // for reducing the number of shards we look at more than just the write index
-        Map<String, IndexWriteLoad> writeLoadsWithinCoolingPeriod = DataStream.getIndicesWithinMaxAgeRange(
+        Map<String, Double> writeLoadsWithinCoolingPeriod = DataStream.getIndicesWithinMaxAgeRange(
             dataStream,
             project::getIndexSafe,
             inputs.decreaseShardsCooldown(),
@@ -752,25 +783,42 @@ public class DataStreamAutoShardingService {
             .filter(index -> index.equals(dataStream.getWriteIndex()) == false)
             .map(project::index)
             .filter(Objects::nonNull)
-            .filter(metadata -> metadata.getStats() != null)
-            .filter(metadata -> metadata.getStats().indexWriteLoad() != null)
-            .collect(
-                toMap(metadata -> metadata.getIndex().getName(), metadata -> metadata.getStats().indexWriteLoad(), (unused1, unused2) -> {
-                    throw new IllegalStateException("Multiple indices with same name");
-                }, LinkedHashMap::new)
-            );
+            .filter(
+                metadata -> inputs.currentWriteLoadByIndex.containsKey(metadata.getIndex().getName())
+                    || (metadata.getStats() != null && metadata.getStats().indexWriteLoad() != null)
+            )
+            .collect(toMap(metadata -> metadata.getIndex().getName(), metadata -> getIndexLoad(metadata, inputs), (unused1, unused2) -> {
+                throw new IllegalStateException("Multiple indices with same name");
+            }, LinkedHashMap::new));
 
         // assume the current write index load is the highest observed and look back to find the actual maximum
-        double maxLoadWithinCooldown = inputs.writeIndexLoads.get(inputs.writeIndex).pickMetric(inputs.decreaseShardsMetric);
+        double maxLoadWithinCooldown = inputs.currentWriteLoadByIndex.get(inputs.writeIndex).pickMetric(inputs.decreaseShardsMetric);
         String previousIndexInCooldownWithMaxLoad = null;
-        for (Map.Entry<String, IndexWriteLoad> entry : writeLoadsWithinCoolingPeriod.entrySet()) {
+        for (Map.Entry<String, Double> entry : writeLoadsWithinCoolingPeriod.entrySet()) {
             String indexName = entry.getKey();
-            IndexWriteLoad writeLoad = entry.getValue();
-            double totalIndexLoad = 0;
-            for (int shardId = 0; shardId < writeLoad.numberOfShards(); shardId++) {
-                Double writeIndexLoad = optionalDoubleToNullable(writeLoad.getWriteLoadForShard(shardId));
-                Double writeIndexRecentLoad = optionalDoubleToNullable(writeLoad.getRecentWriteLoadForShard(shardId));
-                Double writeIndexPeakLoad = optionalDoubleToNullable(writeLoad.getPeakWriteLoadForShard(shardId));
+            double totalIndexLoad = entry.getValue();
+            if (totalIndexLoad > maxLoadWithinCooldown) {
+                maxLoadWithinCooldown = totalIndexLoad;
+                previousIndexInCooldownWithMaxLoad = indexName;
+            }
+        }
+        return new Decision.DecreaseCalculation.MaxLoadWithinCooldown(maxLoadWithinCooldown, previousIndexInCooldownWithMaxLoad);
+    }
+
+    /**
+     * Get the max load for this index either by the recorded stats or the current ones that are within the increase lookback period
+     */
+    private static double getIndexLoad(IndexMetadata indexMetadata, Decision.Inputs inputs) {
+        String indexName = indexMetadata.getIndex().getName();
+        IndexWriteLoad recordedIndexLoad = indexMetadata.getStats() == null || indexMetadata.getStats().indexWriteLoad() == null
+            ? null
+            : indexMetadata.getStats().writeLoad();
+        double recordedTotalIndexLoad = 0.0;
+        if (recordedIndexLoad != null) {
+            for (int shardId = 0; shardId < recordedIndexLoad.numberOfShards(); shardId++) {
+                Double writeIndexLoad = optionalDoubleToNullable(recordedIndexLoad.getWriteLoadForShard(shardId));
+                Double writeIndexRecentLoad = optionalDoubleToNullable(recordedIndexLoad.getRecentWriteLoadForShard(shardId));
+                Double writeIndexPeakLoad = optionalDoubleToNullable(recordedIndexLoad.getPeakWriteLoadForShard(shardId));
                 Double writeLoadForShard = switch (inputs.decreaseShardsMetric()) {
                     case ALL_TIME -> writeIndexLoad;
                     // RECENT and PEAK fall back to the all-time metric if the stored value is not available
@@ -778,15 +826,30 @@ public class DataStreamAutoShardingService {
                     case PEAK -> writeIndexPeakLoad != null ? writeIndexPeakLoad : writeIndexLoad;
                 };
                 if (writeLoadForShard != null) {
-                    totalIndexLoad += writeLoadForShard;
+                    recordedTotalIndexLoad += writeLoadForShard;
                 }
             }
-            if (totalIndexLoad > maxLoadWithinCooldown) {
-                maxLoadWithinCooldown = totalIndexLoad;
-                previousIndexInCooldownWithMaxLoad = indexName;
-            }
         }
-        return new Decision.DecreaseCalculation.MaxLoadWithinCooldown(maxLoadWithinCooldown, previousIndexInCooldownWithMaxLoad);
+        double currentIndexLoad = inputs.currentWriteLoadByIndex.containsKey(indexName)
+            ? inputs.currentWriteLoadByIndex.get(indexName).pickMetric(inputs.decreaseShardsMetric)
+            : 0.0;
+        return Math.max(recordedTotalIndexLoad, currentIndexLoad);
+    }
+
+    /**
+     * Whether the index can still receive documents that are not older than the lookback start, i.e. whether the end of its time series
+     * range is after the lookback start. Indices without a time series range (e.g. indices from before the data stream was migrated to
+     * time series) are never within the lookback.
+     */
+    private static boolean isWithinTimeSeriesLookback(ProjectMetadata projectMetadata, String index, long lookbackStartMillis) {
+        IndexMetadata indexMetadata = projectMetadata.index(index);
+        if (indexMetadata == null
+            || indexMetadata.getSettings().getAsBoolean("index.blocks.write", false)
+            || IndexMode.isTsdb(indexMetadata.getIndexMode()) == false) {
+            return false;
+        }
+        Instant timeSeriesEnd = indexMetadata.getTimeSeriesEnd();
+        return timeSeriesEnd != null && timeSeriesEnd.toEpochMilli() > lookbackStartMillis;
     }
 
     void updateIncreaseShardsCooldown(TimeValue scaleUpCooldown) {
@@ -878,7 +941,7 @@ public class DataStreamAutoShardingService {
         static final long FLUSH_INTERVAL_MILLIS = TimeValue.timeValueMinutes(5).millis();
 
         private static final Comparator<Decision> HIGHEST_LOAD_COMPARATOR = Comparator.comparing(
-            d -> d.increaseCalculation().writeIndexLoadForIncrease()
+            d -> d.increaseCalculation().maxLoadWithinIncreaseLookahead().load()
         );
 
         private final LongSupplier nowSupplier;
