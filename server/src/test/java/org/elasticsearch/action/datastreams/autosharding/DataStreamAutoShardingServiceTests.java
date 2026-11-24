@@ -13,6 +13,7 @@ import org.elasticsearch.action.admin.indices.rollover.MaxAgeCondition;
 import org.elasticsearch.action.admin.indices.rollover.RolloverInfo;
 import org.elasticsearch.action.admin.indices.stats.CommonStats;
 import org.elasticsearch.action.admin.indices.stats.IndexStats;
+import org.elasticsearch.action.admin.indices.stats.IndicesStatsResponse;
 import org.elasticsearch.action.admin.indices.stats.ShardStats;
 import org.elasticsearch.action.datastreams.autosharding.DataStreamAutoShardingService.Decision;
 import org.elasticsearch.action.datastreams.autosharding.DataStreamAutoShardingService.WriteLoadMetric;
@@ -74,6 +75,8 @@ import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class DataStreamAutoShardingServiceTests extends ESTestCase {
 
@@ -150,7 +153,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             AutoShardingResult autoShardingResult = disabledAutoshardingService.calculate(
                 state.projectState(projectId),
                 dataStream,
-                createIndexStats(1, 9999.0, 9999.0, 2.0)
+                mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 9999.0, 2.0)
             );
             assertThat(autoShardingResult, is(NOT_APPLICABLE_RESULT));
         }
@@ -184,7 +187,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            createIndexStats(1, 9999.0, 9999.0, 2.5)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 9999.0, 2.5)
         );
         assertThat(autoShardingResult.type(), is(INCREASE_SHARDS));
         // no pre-existing scaling event so the cool down must be zero
@@ -223,7 +226,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            createIndexStats(1, 9999.0, 9999.0, 2.5)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 9999.0, 2.5)
         );
         assertThat(autoShardingResult.type(), is(COOLDOWN_PREVENTED_INCREASE));
         // no pre-existing scaling event so the cool down must be zero
@@ -261,7 +264,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            createIndexStats(1, 9999.0, 9999.0, 2.5)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 9999.0, 2.5)
         );
         assertThat(autoShardingResult.type(), is(INCREASE_SHARDS));
         // no pre-existing scaling event so the cool down must be zero
@@ -292,7 +295,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             AutoShardingResult autoShardingResult = service.calculate(
                 state.projectState(projectId),
                 dataStream,
-                createIndexStats(1, 9999.0, 2.5, 9999.0)
+                mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 2.5, 9999.0)
             );
             assertThat(autoShardingResult.type(), is(INCREASE_SHARDS));
             // no pre-existing scaling event so the cool down must be zero
@@ -324,7 +327,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             AutoShardingResult autoShardingResult = service.calculate(
                 state.projectState(projectId),
                 dataStream,
-                createIndexStats(1, 2.5, 9999.0, 9999.0)
+                mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 2.5, 9999.0, 9999.0)
             );
             assertThat(autoShardingResult.type(), is(INCREASE_SHARDS));
             // no pre-existing scaling event so the cool down must be zero
@@ -357,7 +360,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            createIndexStats(3, 9999.0, 9999.0, 1.0 / 3)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3)
         );
         // the cooldown period for the decrease shards event hasn't lapsed since the data stream was created
         assertThat(autoShardingResult.type(), is(COOLDOWN_PREVENTED_DECREASE));
@@ -394,7 +397,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            createIndexStats(3, 9999.0, 9999.0, 1.0 / 3)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3)
         );
         assertThat(autoShardingResult.type(), is(DECREASE_SHARDS));
         assertThat(autoShardingResult.targetNumberOfShards(), is(1));
@@ -438,7 +441,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            createIndexStats(3, 9999.0, 9999.0, 1.0 / 3)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3)
         );
         assertThat(autoShardingResult.type(), is(DECREASE_SHARDS));
         assertThat(autoShardingResult.targetNumberOfShards(), is(1));
@@ -480,7 +483,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            createIndexStats(3, 9999.0, 9999.0, 1.0 / 3)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3)
         );
         assertThat(autoShardingResult.type(), is(COOLDOWN_PREVENTED_DECREASE));
         assertThat(autoShardingResult.targetNumberOfShards(), is(1));
@@ -517,7 +520,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            createIndexStats(3, 9999.0, 9999.0, 4.0 / 3)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 4.0 / 3)
         );
         assertThat(autoShardingResult.type(), is(NO_CHANGE_REQUIRED));
         assertThat(autoShardingResult.targetNumberOfShards(), is(3));
@@ -553,7 +556,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             AutoShardingResult autoShardingResult = service.calculate(
                 state.projectState(projectId),
                 dataStream,
-                createIndexStats(3, 9999.0, 1.0 / 3, 0.5 / 3)
+                mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 1.0 / 3, 0.5 / 3)
             );
             assertThat(autoShardingResult.type(), is(DECREASE_SHARDS));
             assertThat(autoShardingResult.targetNumberOfShards(), is(1));
@@ -590,7 +593,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             AutoShardingResult autoShardingResult = service.calculate(
                 state.projectState(projectId),
                 dataStream,
-                createIndexStats(3, 1.0 / 3, 9999.0, 0.5 / 3)
+                mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 1.0 / 3, 9999.0, 0.5 / 3)
             );
             assertThat(autoShardingResult.type(), is(DECREASE_SHARDS));
             assertThat(autoShardingResult.targetNumberOfShards(), is(1));
@@ -631,7 +634,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             AutoShardingResult autoShardingResult = service.calculate(
                 state.projectState(projectId),
                 dataStream,
-                createIndexStats(3, 0.9 / 3, 0.3 / 3, 1.9 / 3)
+                mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 0.9 / 3, 0.3 / 3, 1.9 / 3)
             );
             assertThat(autoShardingResult.type(), is(DECREASE_SHARDS));
             assertThat(autoShardingResult.currentNumberOfShards(), is(3));
@@ -659,9 +662,9 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             assertThat(decision.inputs().decreaseShardsMetric(), equalTo(WriteLoadMetric.RECENT));
             assertThat(decision.inputs().dataStream(), equalTo(dataStreamName));
             assertThat(decision.inputs().writeIndex(), equalTo(DataStream.getDefaultBackingIndexName(dataStreamName, 5, now - 1000)));
-            assertThat(decision.inputs().writeIndexAllTimeLoad(), closeTo(0.9, 1.0e-8));
-            assertThat(decision.inputs().writeIndexRecentLoad(), closeTo(0.3, 1.0e-8));
-            assertThat(decision.inputs().writeIndexPeakLoad(), closeTo(1.9, 1.0e-8));
+            assertThat(decision.inputs().getWriteIndexLoad().allTimeLoad(), closeTo(0.9, 1.0e-8));
+            assertThat(decision.inputs().getWriteIndexLoad().recentLoad(), closeTo(0.3, 1.0e-8));
+            assertThat(decision.inputs().getWriteIndexLoad().peakLoad(), closeTo(1.9, 1.0e-8));
             assertThat(decision.inputs().currentNumberOfWriteIndexShards(), equalTo(3));
             assertThat(decision.increaseCalculation().writeIndexLoadForIncrease(), closeTo(1.9, 1.0e-8)); // all-time
             // Increase shard count based on all-time load of 1.9 for write index:
@@ -989,9 +992,10 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             decreaseShardsMetric,
             dataStreamName,
             "the-write-index",
-            writeIndexAllTimeLoad,
-            writeIndexRecentLoad,
-            writeIndexPeakLoad,
+            Map.of(
+                "the-write-index",
+                new DataStreamAutoShardingService.WriteLoad(writeIndexAllTimeLoad, writeIndexRecentLoad, writeIndexPeakLoad)
+            ),
             3,
             1
         );
@@ -1025,17 +1029,34 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         assertThat(cooldownPreventedDecrease.coolDownRemaining(), is(TimeValue.timeValueSeconds(7)));
     }
 
-    private IndexStats createIndexStats(int numberOfShards, double shardWriteLoad, double shardRecentWriteLoad, double shardPeakWriteLoad) {
-        String indexName = DataStream.getDefaultBackingIndexName(dataStreamName, 99); // the generation number here is not used
+    private IndicesStatsResponse mockStatsResponse(
+        String indexName,
+        int numberOfShards,
+        double shardWriteLoad,
+        double shardRecentWriteLoad,
+        double shardPeakWriteLoad
+    ) {
         Index index = new Index(indexName, randomUUID());
         IndexStats.IndexStatsBuilder builder = new IndexStats.IndexStatsBuilder(indexName, randomUUID(), null, null);
+        ShardStats[] shardStats = new ShardStats[numberOfShards * 2];
         for (int shardNumber = 0; shardNumber < numberOfShards; shardNumber++) {
             // Add stats for the primary:
-            builder.add(createShardStats(shardWriteLoad, shardRecentWriteLoad, shardPeakWriteLoad, new ShardId(index, shardNumber), true));
+            int primaryIndex = 2 * shardNumber;
+            shardStats[primaryIndex] = createShardStats(
+                shardWriteLoad,
+                shardRecentWriteLoad,
+                shardPeakWriteLoad,
+                new ShardId(index, shardNumber),
+                true
+            );
             // Add stats for a replica, which should be ignored:
-            builder.add(createShardStats(9999.0, 9999.0, 9999.0, new ShardId(index, shardNumber), false));
+            shardStats[primaryIndex + 1] = createShardStats(9999.0, 9999.0, 9999.0, new ShardId(index, shardNumber), false);
+            builder.add(shardStats[primaryIndex]).add(shardStats[primaryIndex + 1]);
         }
-        return builder.build();
+        final IndicesStatsResponse indicesStatsResponse = mock(IndicesStatsResponse.class);
+        when(indicesStatsResponse.getShards()).thenReturn(shardStats);
+        when(indicesStatsResponse.getIndex(indexName)).thenReturn(builder.build());
+        return indicesStatsResponse;
     }
 
     private static ShardStats createShardStats(
@@ -1341,9 +1362,10 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
             WriteLoadMetric.ALL_TIME,
             "data-stream-" + writeIndexLoadForIncreaseAndDataStreamName,
             "the-write-index",
-            0.1,
-            0.2,
-            1.0 * writeIndexLoadForIncreaseAndDataStreamName,
+            Map.of(
+                "the-write-index",
+                new DataStreamAutoShardingService.WriteLoad(0.1, 0.2, 1.0 * writeIndexLoadForIncreaseAndDataStreamName)
+            ),
             3,
             1
         );
@@ -1358,7 +1380,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult autoShardingResult = service.calculate(
             state.projectState(projectId),
             dataStream,
-            createIndexStats(1, 1.0, 1.0, 1.0)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 1.0, 1.0, 1.0)
         );
         assertThat(autoShardingResult, is(NOT_APPLICABLE_RESULT));
         assertThat(decisionsLogged, hasSize(0));
@@ -1370,7 +1392,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         DataStream dataStream = createLookupModeDataStream(builder);
         ClusterState state = createClusterStateWithDataStream(builder);
 
-        AutoShardingResult autoShardingResult = service.calculate(state.projectState(projectId), dataStream, null);
+        AutoShardingResult autoShardingResult = service.calculate(state.projectState(projectId), dataStream, (IndicesStatsResponse) null);
         assertThat(autoShardingResult, is(NOT_APPLICABLE_RESULT));
         assertThat(decisionsLogged, hasSize(0));
     }
@@ -1409,12 +1431,16 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         ClusterState state = createClusterStateWithDataStream(builder);
 
         // With real stats: should be NOT_APPLICABLE because the effective mode is LOOKUP.
-        AutoShardingResult withStats = service.calculate(state.projectState(projectId), dataStream, createIndexStats(1, 1.0, 1.0, 1.0));
+        AutoShardingResult withStats = service.calculate(
+            state.projectState(projectId),
+            dataStream,
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 1.0, 1.0, 1.0)
+        );
         assertThat(withStats, is(NOT_APPLICABLE_RESULT));
         assertThat(decisionsLogged, hasSize(0));
 
         // With null stats: same guard should fire before the null-stats check.
-        AutoShardingResult withNullStats = service.calculate(state.projectState(projectId), dataStream, null);
+        AutoShardingResult withNullStats = service.calculate(state.projectState(projectId), dataStream, (IndicesStatsResponse) null);
         assertThat(withNullStats, is(NOT_APPLICABLE_RESULT));
         assertThat(decisionsLogged, hasSize(0));
     }
@@ -1451,7 +1477,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult result = service.calculate(
             state.projectState(projectId),
             dataStream,
-            createIndexStats(1, 9999.0, 9999.0, 9999.0)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 1, 9999.0, 9999.0, 9999.0)
         );
         assertThat(result.type(), is(INCREASE_SHARDS));
     }
@@ -1463,10 +1489,10 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         DataStream dataStream = createOldLowLoadDataStream(builder, dataStreamName, 3);
         builder.put(dataStream);
         ClusterState state = createClusterStateWithDataStream(builder);
-        IndexStats writeIndexStats = createIndexStats(3, 9999.0, 9999.0, 1.0 / 3);
+        IndicesStatsResponse statsResponse = mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3);
 
         // with the default minimum of 1 the load alone dictates the target
-        AutoShardingResult result = service.calculate(state.projectState(projectId), dataStream, writeIndexStats);
+        AutoShardingResult result = service.calculate(state.projectState(projectId), dataStream, statsResponse);
         assertThat(result.type(), is(DECREASE_SHARDS));
         assertThat(result.targetNumberOfShards(), is(1));
 
@@ -1474,7 +1500,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         clusterSettings.applySettings(
             Settings.builder().put(DataStreamAutoShardingService.DATA_STREAMS_AUTO_SHARDING_MIN_NUMBER_OF_SHARDS.getKey(), 2).build()
         );
-        result = service.calculate(state.projectState(projectId), dataStream, writeIndexStats);
+        result = service.calculate(state.projectState(projectId), dataStream, statsResponse);
         assertThat(result.type(), is(DECREASE_SHARDS));
         assertThat(result.targetNumberOfShards(), is(2));
         assertThat(decisionsLogged.getLast().inputs().minNumberOfShards(), is(2));
@@ -1483,7 +1509,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         clusterSettings.applySettings(
             Settings.builder().put(DataStreamAutoShardingService.DATA_STREAMS_AUTO_SHARDING_MIN_NUMBER_OF_SHARDS.getKey(), 3).build()
         );
-        result = service.calculate(state.projectState(projectId), dataStream, writeIndexStats);
+        result = service.calculate(state.projectState(projectId), dataStream, statsResponse);
         assertThat(result.type(), is(NO_CHANGE_REQUIRED));
         assertThat(result.targetNumberOfShards(), is(3));
 
@@ -1491,7 +1517,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         clusterSettings.applySettings(
             Settings.builder().put(DataStreamAutoShardingService.DATA_STREAMS_AUTO_SHARDING_MIN_NUMBER_OF_SHARDS.getKey(), 5).build()
         );
-        result = service.calculate(state.projectState(projectId), dataStream, writeIndexStats);
+        result = service.calculate(state.projectState(projectId), dataStream, statsResponse);
         assertThat(result.type(), is(NO_CHANGE_REQUIRED));
         assertThat(result.targetNumberOfShards(), is(3));
     }
@@ -1508,7 +1534,6 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         DataStream standardDataStream = createOldLowLoadDataStream(builder, standardDataStreamName, 3);
         builder.put(standardDataStream);
         ClusterState state = createClusterStateWithDataStream(builder);
-        IndexStats writeIndexStats = createIndexStats(3, 9999.0, 9999.0, 1.0 / 3);
 
         // the time series minimum only applies to time series data streams
         clusterSettings.applySettings(
@@ -1516,10 +1541,18 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
                 .put(DataStreamAutoShardingService.DATA_STREAMS_AUTO_SHARDING_TIME_SERIES_MIN_NUMBER_OF_SHARDS.getKey(), 3)
                 .build()
         );
-        AutoShardingResult timeSeriesResult = service.calculate(state.projectState(projectId), timeSeriesDataStream, writeIndexStats);
+        AutoShardingResult timeSeriesResult = service.calculate(
+            state.projectState(projectId),
+            timeSeriesDataStream,
+            mockStatsResponse(timeSeriesDataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3)
+        );
         assertThat(timeSeriesResult.type(), is(NO_CHANGE_REQUIRED));
         assertThat(timeSeriesResult.targetNumberOfShards(), is(3));
-        AutoShardingResult standardResult = service.calculate(state.projectState(projectId), standardDataStream, writeIndexStats);
+        AutoShardingResult standardResult = service.calculate(
+            state.projectState(projectId),
+            standardDataStream,
+            mockStatsResponse(standardDataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3)
+        );
         assertThat(standardResult.type(), is(DECREASE_SHARDS));
         assertThat(standardResult.targetNumberOfShards(), is(1));
     }
@@ -1553,7 +1586,7 @@ public class DataStreamAutoShardingServiceTests extends ESTestCase {
         AutoShardingResult result = service.calculate(
             state.projectState(projectId),
             dataStream,
-            createIndexStats(3, 9999.0, 9999.0, 1.0 / 3)
+            mockStatsResponse(dataStream.getWriteIndex().getName(), 3, 9999.0, 9999.0, 1.0 / 3)
         );
         assertThat(result.type(), is(NO_CHANGE_REQUIRED));
         assertThat(result.targetNumberOfShards(), is(3));
